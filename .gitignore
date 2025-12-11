@@ -6,6 +6,15 @@ __pycache__/
 # C extensions
 *.so
 
+# Dataset formats
+.rls
+.hdf5
+.h5
+.mp4
+.zarr
+.zarr.zip
+.zip
+
 # Distribution / packaging
 .Python
 build/
