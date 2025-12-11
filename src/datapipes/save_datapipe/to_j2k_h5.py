@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from pathlib import Path
 
-from src.datapipes.datapipe import DataPipe
+from datapipes.datapipe import DataPipe
 from datapipes.ops import Ops
 from datapipes.datasets.dataset_rls import DatasetRLS
 

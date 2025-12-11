@@ -94,14 +94,14 @@ class DatasetImageFolder(DatasetSource):
 if __name__ == "__main__":
     path = R"G:\recordings\despeckler_data\cranial_window_ex0\despeckler_on\02"
     ds = DatasetImageFolder(path)
-    from src.datapipes.datapipe import DataPipe
+    from datapipes.datapipe import DataPipe
     dp = DataPipe(ds)
     import img
 
     img.plot(dp[0])
 
     #%%
-    from src.datapipes.sinks import save_hdf5
+    from datapipes.sinks import save_hdf5
 
     out_path = R"G:\Emil\test_image_folder_dataset_to_hdf5.hdf5"
     save_hdf5(dp, out_path, batch_size=8192, dtype=np.uint8, save_mean=True)

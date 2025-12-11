@@ -1,14 +1,13 @@
 #%%
-from src.datapipes.datapipe import DataPipe, FutureSlice
+from datapipes.datapipe import DataPipe
 import torch
 from pathlib import Path
 import numpy as np
 from datapipes.sic import sic
 from tqdm import tqdm
 from typing import Optional, Tuple, Generator, Iterator
-from src.datapipes.datapipe import DataPipe
 import inspect
-import ast
+
 
 
 PRIMITIVES = (int, float, bool, str, type(None))

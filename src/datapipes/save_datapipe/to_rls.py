@@ -1,5 +1,5 @@
 from datapipes.save_datapipe.RLS_file_writer import prepare_rls_file, RLS_Writer
-from src.datapipes.datapipe import DataPipe
+from datapipes.datapipe import DataPipe
 from pathlib import Path
 import numpy as np
 from datapipes.io_pipeline import Pipeline

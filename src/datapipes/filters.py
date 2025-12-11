@@ -4,17 +4,14 @@ import torch
 import torch.nn.functional as F
 from skimage.morphology import disk
 import einops
-from typing import Callable
-
-from datapipes.plotting import img
+from typing import Callable, Literal
+from datapipes.plotting import map01
 from datapipes.sic import sic
-
 
 class blurs:
     @staticmethod
-    def uniform_disk_blur(frames: torch.Tensor, kernel_size: int=3) -> torch.Tensor:
-        pad = kernel_size // 2
-        padder = torch.nn.ReplicationPad2d(pad)
+    def uniform_disk_blur(frames: torch.Tensor, kernel_size: int=3, padding: Literal["valid", "same"]="same") -> torch.Tensor:
+        
         if kernel_size == 3:
             kernel = torch.tensor([
                 [1, 1, 1],
@@ -27,7 +24,11 @@ class blurs:
         kernel = kernel.view(1, 1, kernel_size, kernel_size)
         if len(frames.shape) == 3:
             frames = frames.unsqueeze(0)
-        fframe = padder(frames)
+        if padding == "same":
+            pad = kernel_size // 2
+            padder = torch.nn.ReplicationPad2d(pad)
+            frames = padder(frames)
+
         frames = F.conv2d(frames, kernel)
         return frames
     
@@ -52,7 +53,7 @@ class blurs:
 class gradients:
     @staticmethod
     def laplace_of_gaussians(frames: torch.tensor, window_size: int, sigma_low: float=2, sigma_high: float=3, normalize_input=True):
-        frames = img.map01(frames) if normalize_input else frames
+        frames = map01(frames) if normalize_input else frames
         return (blurs.gaussian_blur(frames, window_size, sigma_high) - blurs.gaussian_blur(frames, window_size, sigma_low))
     
     @staticmethod
@@ -144,7 +145,7 @@ class gradients:
         vesselness = torch.clamp(-eig2, max=0.0)
         vesselness = vesselness / (vesselness.max() + 1e-8)
 
-        # img.plots(
+        # plots(
         #     vesselness,
         #     ((eig1 < 0) * (eig2 < 0)).float(),
         #     vesselness + ((eig1 < 0) * (eig2 < 0)).float(),
@@ -175,7 +176,7 @@ class patch_filters:
             if len(x.shape) == 3:
                 x = x.unsqueeze(0)
             for _ in range(iterations):
-                x = img.map01(x)
+                x = map01(x)
                 patches = x.unfold(-2, kernel_size, 1) # Unfold height
                 patches = patches.unfold(-2, kernel_size, 1) # Unfold width
                 patches = patches * _erosion_mask_kernel
@@ -213,17 +214,3 @@ class metrics:
             std, m = torch.std_mean(frames, dim=2)
             return std / (m + eps)
 
-
-# def get_sample_data() -> tuple["FlowMatchingDataset", torch.Tensor]:
-#     from load_flow_matching_dataset import get_data_loader, FlowMatchingDataset
-#     loader = get_data_loader()
-#     ds: FlowMatchingDataset = loader.dataset
-#     x1 = ds.flow_field[0].means[0:2].mean(0)
-#     return ds, x1
-
-# if __name__ == "__main__":
-#     ds, x1 = get_sample_data()
-#     img.plots(
-#         x1,
-#         meijering_vesselness_loss(x1)
-#     )

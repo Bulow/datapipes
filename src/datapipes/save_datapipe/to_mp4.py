@@ -2,7 +2,7 @@ import torch
 import av
 av.logging.set_level(av.logging.VERBOSE)
 import numpy as np
-from src.datapipes.datapipe import DataPipe
+from datapipes.datapipe import DataPipe
 from pathlib import Path
 # import test_compression_method as test
 from typing import Dict, Tuple, Any, Callable, List, Optional, Literal

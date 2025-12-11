@@ -9,7 +9,7 @@ from zarr.codecs import numcodecs
 # numcodecs.blosc.set_nthreads(24)
 # zarr_compressors = numcodecs # https://numcodecs.readthedocs.io/en/stable/zarr3.html
 
-from src.datapipes.datapipe import DataPipe
+from datapipes.datapipe import DataPipe
 from pathlib import Path
 import numpy as np
 from datapipes.io_pipeline import Pipeline
