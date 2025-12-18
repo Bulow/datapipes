@@ -94,7 +94,6 @@ def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=True) 
 
 def sum(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.Tensor:
     total_sum = torch.zeros_like(frames[0]).to("cuda", torch.float32)
-    frames.to("cuda")
 
     for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progressbar=True):
         total_sum += batch.sum(0)
@@ -102,7 +101,6 @@ def sum(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.
 
 def mean(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.Tensor:
     total_sum = torch.zeros_like(frames[0]).to("cuda", torch.float32)
-    frames.to("cuda")
 
     for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progressbar=True):
         total_sum += batch.sum(0)

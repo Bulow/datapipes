@@ -155,8 +155,8 @@ class RLS_FileReader:
 
         # Map to tensor
         data = self.mm[from_memory_index:to_memory_index]
-        flat_tensor = torch.frombuffer(data, dtype=self.rls_dtype, count=frame_count * self.get_total_size_per_frame(), requires_grad=False)
-
+        
+        flat_tensor = torch.frombuffer(data, dtype=self.rls_dtype, count=frame_count * self.get_total_size_per_frame(), requires_grad=False).clone()
         #Get views that extract and remap frames into seperate tensors. Actual underlying memory is still flat_tensor, so torch.reshape doesn't work.
         frames = torch.as_strided(flat_tensor, size=(frame_count, 1, self.size_first_dim, self.size_second_dim), 
             stride=(                                                                    # Bytes to skip to get next index along dimension:

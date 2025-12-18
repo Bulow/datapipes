@@ -79,6 +79,10 @@ class Ops:
         return torch.log(frames + eps)
     
     @staticmethod
+    def log1p(frames: torch.Tensor) -> torch.Tensor:
+        return torch.log1p(frames)
+    
+    @staticmethod
     def sqrt(frames: torch.Tensor, eps=1e-6) -> torch.Tensor:
         return torch.sqrt(torch.clamp_min(frames, min=0) + eps)
     

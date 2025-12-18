@@ -6,6 +6,8 @@ from datapipes.utils import introspection
 from datapipes.utils.slicer import Slicer
 from datapipes.utils.forced_tty_mode_tqdm import tty_tqdm
 from datapipes.utils import cache_results
+from datapipes.utils import import_resource
+# from datapipes.utils import noise
 
 def enable_jupyter_autoreload():
     from IPython import get_ipython
@@ -31,4 +33,4 @@ def print_gpu_info():
     else:
         print("CUDA is not available - PyTorch will use CPU")
 
-__all__ = ["introspection", "Slicer", "tty_tqdm", "cache_results", "enable_jupyter_autoreload", "print_gpu_info"]
+__all__ = ["introspection", "Slicer", "tty_tqdm", "cache_results", "enable_jupyter_autoreload", "print_gpu_info", "import_resource"]

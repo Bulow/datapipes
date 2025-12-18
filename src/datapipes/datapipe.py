@@ -3,7 +3,8 @@ import typing
 from typing import Tuple, Callable, List, Any, Optional
 from datapipes.datasets.dataset_source import DatasetSource
 # from tqdm import tqdm
-from datapipes.utils.forced_tty_mode_tqdm import tty_tqdm
+# from datapipes.utils.forced_tty_mode_tqdm import tty_tqdm
+from tqdm import tqdm
 import math
 import torch
 import numpy as np
@@ -17,8 +18,6 @@ from datapipes.auto_indexing_window import AutoIndexingWindow
 
 # TODO: Make DataPipe composable with abstract datapipes
 
-# TODO: Make windows take dim_pads to work along all dimensions
-
 
 @dataclass
 class FutureSlice:
@@ -28,7 +27,7 @@ class FutureSlice:
 
 class DataPipe(DatasetSource):
 
-    def __init__(self, dataset: "DatasetSource|DataPipe", segments: Tuple=()):
+    def __init__(self, dataset: "DatasetSource|DataPipe", segments: Tuple=(), requires_grad: bool=False):
         self._dataset = dataset
         self.segments = segments
 
@@ -36,42 +35,8 @@ class DataPipe(DatasetSource):
 
         self._shape = self.auto_indexing_window.shape
 
-        # shape_deltas, probed_output = self.probe_self()
+        self.requires_grad = requires_grad
 
-        # dim_pads = tuple([d // 2 for d in shape_deltas])
-
-        # temporal_pad_size = dim_pads[0]
-        
-        # if isinstance(probed_output, torch.Tensor):
-        #     self.dtype = probed_output.dtype
-        #     self.device = probed_output.device
-        # elif isinstance(probed_output, np.numpy):
-        #     self.dtype = probed_output.dtype
-        #     self.device = "cpu"
-
-        
-        # self._dataset = dataset
-        
-
-        # # self.valid_window: ValidWindow = ValidWindow.pad(self._dataset, pad=temporal_pad_size)
-        # # self.auto_unpadding_window: AutoUnpaddingWindow = self.valid_window.get_unpadding_window(padding=temporal_pad_size)
-        # self.valid_window: NdValidWindow = NdValidWindow(data = self._dataset, bounds=tuple([slice(pad, -pad) if pad > 0 else slice(None) for pad in dim_pads]))
-        # self.auto_unpadding_window: NdAutoUnpaddingWindow = NdAutoUnpaddingWindow(data=self.valid_window, padding=dim_pads)
-        
-        # # self._shape: torch.Tensor = [int(s - (pad * 2)) for s, pad in zip(self._dataset.shape, dim_pads)]
-        # self._shape = self.valid_window.shape
-
-    # def probe_self(self, td=512, sd=128) -> tuple[list[int], Any]:
-    #     # TODO: Support rearrange, different number of dimensions etc.
-
-    #     probe_shape = [td, 1, sd, sd]
-    #     test_data = torch.zeros(probe_shape)
-    #     probe_output = self._execute_pipe(test_data)
-
-    #     shape_deltas = [d_before - d_after for d_before, d_after in zip(probe_shape, probe_output.shape)]
-
-        
-    #     return shape_deltas, probe_output
 
     def __len__(self):
         return self.shape[0]
@@ -98,15 +63,15 @@ class DataPipe(DatasetSource):
         return self | (lambda f: f.to(*args, **kwargs))
     
     def _execute_pipe(self, data: DatasetSource) -> DatasetSource:
-        with torch.no_grad():
+        if not self.requires_grad:
+            with torch.no_grad():
+                for segment in self.segments:
+                    data = segment(data)
+        else:
             for segment in self.segments:
-                data = segment(data)
-            return data
+                    data = segment(data)
+        return data
         
-    # def compile(self):
-    #     compiled_pipe = torch.compile(self._execute_pipe)
-    #     return DataPipe(self._dataset, segments=(compiled_pipe, ), pad_size=self.pad_size)
-
     def __getitem__(self, index):
         data = self.auto_indexing_window[index]
         data = self._execute_pipe(data)
@@ -115,17 +80,6 @@ class DataPipe(DatasetSource):
             return data[0]
         else:
             return data
-
-        # if isinstance(index, int) or isinstance(index, slice) or isinstance(index, tuple):
-        #     # Expand index to slice covering source frames in dataset
-        #     data = self.auto_unpadding_window[index]
-        #     data = self._execute_pipe(data)
-
-        #     return data if isinstance(index, slice) else data[0]
-        
-        # else:
-        #     raise TypeError("Index must be int, slice, or tuple. Got", type(index))
-        
 
 
     def then(self, func): #, time_window: int=1):
@@ -151,7 +105,7 @@ class DataPipe(DatasetSource):
 
     def batches_with_progressbar(self, *, batch_size: int, max_frames=None, title="", **kwargs):
         frame_count = len(self) if max_frames is None else min(len(self), max_frames)
-        for batch in tty_tqdm(self.batches(batch_size=batch_size, max_frames=max_frames), total=math.ceil(frame_count / batch_size), desc=title, **kwargs):
+        for batch in tqdm(self.batches(batch_size=batch_size, max_frames=max_frames), total=math.ceil(frame_count / batch_size), desc=title, **kwargs):
             yield batch
 
     def get_item_multithreaded(self, index: slice, output_dtype: typing.Literal["numpy", "torch"]="numpy", then: typing.Callable[[FutureSlice], typing.Any]=None) -> FutureSlice:

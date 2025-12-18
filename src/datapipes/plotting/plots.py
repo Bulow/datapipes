@@ -16,20 +16,27 @@ from pathlib import Path
 import math
 
 from datapipes.plotting.torch_colormap import TorchColormap
-
-from typing import Optional, Tuple, List, Literal, Callable, Any
-
+from datapipes.plotting.interactive_plots import imshow_default as plotly_imshow_default
+from datapipes.plotting.interactive_plots import animate as plotly_animate
+from typing import Optional, Tuple, List, Literal, Callable, Any, Dict
+import plotly
 import plotly.express as px
+import plotly.graph_objects as go
+import warnings
 
-def animate(frames: torch.Tensor, cmap: str = "viridis"):
-    fig = px.imshow(
-        frames.squeeze(1).cpu().numpy(), 
-        animation_frame=0, 
-        binary_string=True, 
-        labels=dict(animation_frame="frame"), contrast_rescaling="minmax", 
-        color_continuous_scale=cmap
-    )
-    fig.show()
+plot_output_backend_type = Literal[
+    "ipython", 
+    "plotly", 
+    "plotly_animate", 
+    "return_pil", 
+    "ipython_and_return_pil",
+    "return_tensor"
+]
+default_plot_output_backend: plot_output_backend_type = "ipython"
+
+def backend_needs_preprocessing(backend: plot_output_backend_type) -> bool:
+    need_preprocessing: Tuple[plot_output_backend_type] = ("ipython", "return_pil", "ipython_and_return_pil")
+    return backend in need_preprocessing
 
 def _map01_torch(frames: torch.Tensor, eps=1e-8):
     '''
@@ -65,15 +72,31 @@ def _clip_space(frames: torch.Tensor|np.ndarray) -> torch.Tensor:
     '''
     return (_map01_torch(frames) - 0.5) * 2
 
-def _plot(frame, return_image=False, show_image=True):
+def _plot(frame, backend: plot_output_backend_type):
     '''
     Display `frame` as an image
     '''
-    image = to_pil_image(map01(frame))
-    if show_image:
-        display(image)
-    if return_image:
-        return image
+
+    match backend:
+        case "ipython":
+            display(to_pil_image(map01(frame)))
+        case "plotly":
+            return plotly_imshow_default(frame)
+        case "plotly_animate":
+            return plotly_animate(frames=frame)
+        case "return_pil":
+            return to_pil_image(map01(frame))
+        case "ipython_and_return_pil":
+            image = to_pil_image(map01(frame))
+            display(image)
+            return image
+        case "return_tensor":
+            t: torch.Tensor = torch.from_numpy(frame) if isinstance(frame, np.ndarray) else frame
+            assert(isinstance(t, torch.Tensor))
+            return t
+        case _:
+            raise ValueError(f"Unsupported backed: {backend}")
+
 
 def _grid_reshape(batch):
     n = batch.shape[0]  # number of images to show
@@ -88,16 +111,20 @@ def _grid_reshape(batch):
     grid = einops.rearrange(imgs, "(r c) n h w -> n (r h) (c w)", r=grid_rows, c=grid_cols)
     return grid
 
-def _plot_grid(batch, return_image=False, show_image=True):
-    return _plot(frame=_grid_reshape(batch), return_image=return_image, show_image=show_image)
+def _plot_grid(batch, backend: plot_output_backend_type = default_plot_output_backend):
+    return _plot(frame=_grid_reshape(batch), backend=backend)
 
 # @torch.no_grad()
-def qtile(tensor: torch.Tensor, quantile: tuple[float], output_bytes=False):
+def qtile(tensor: torch.Tensor, quantile: tuple[float]=(0.02, 0.98), output_bytes=False):
     def get_qtile(tensor: torch.Tensor, min_max_quantiles: tuple=(0.05, 0.95)):
         lower, upper = min_max_quantiles
         tensor = tensor.to(torch.float32)
         min_max = torch.Tensor([lower, upper]).to(tensor)
-        q = torch.quantile(tensor, min_max)       
+        try:
+            q = torch.quantile(tensor, min_max)
+        except RuntimeError as re:
+            warnings.warn(message=f"Encountered {type(re).__name__} while getting quantiles: \"{re}\"\n\t Will use min and max values instead")
+            return (min_max[0], min_max[1])
         return (q[0], q[1])
 
     dev = tensor.device
@@ -130,10 +157,13 @@ def plot_raw(
         map01_individually=True, 
         quantiles: Optional[tuple[float]]=None, 
         cmap: Optional[str|TorchColormap]=None, 
-        mode: Literal["grid", "horizontal", "vertical"]="grid",
-        return_image=False, 
-        show_image=True
+        mode: Literal["grid", "horizontal", "vertical", "animate"]="grid",
+        backend: plot_output_backend_type = default_plot_output_backend
     ):
+    if mode == "animate" or backend == "plotly_animate":
+        mode = "animate"
+        backend = "plotly_animate"
+        
 
     # Convert all to torch.Tensor
     tensors = [torch.from_numpy(t) if isinstance(t, np.ndarray) else t for t in tensors]
@@ -143,6 +173,9 @@ def plot_raw(
 
     # Ensure all have a batch dimension
     tensors = [t.unsqueeze(0) if len(t.shape) == 3 else t for t in tensors]
+
+    # Add empty third channel to tensors with 2 channels (useful for plotting fields of 2D vectors)
+    tensors = [torch.cat([t, torch.zeros_like(t[..., 1, :, :].unsqueeze(-3))], dim=-3) if t.shape[-3] == 2 else t for t in tensors]
     
     # Clip all to quantiles
     if quantiles is not None:
@@ -152,36 +185,43 @@ def plot_raw(
     if map01_individually:
         tensors = [map01(t) for t in tensors]
 
+    if backend_needs_preprocessing(backend):
+        # Apply color map to all
+        if cmap is not None:
+            if isinstance(cmap, str):
+                cmap = TorchColormap(cmap)
+            tensors = [cmap(t) for t in tensors]
+
     # Pad all to larges (H W) size
-    tensors = _pad_to_largest(*tensors)
-    
-    # Apply color map to all
-    if cmap is not None:
-        if isinstance(cmap, str):
-            cmap = TorchColormap(cmap)
-        tensors = [cmap(t) for t in tensors]
+    tensors = _pad_to_largest(*tensors if not isinstance(tensors, torch.Tensor) else tensors)
 
     tensors = [t.unsqueeze(0) if len(t.shape)==3 else t for t in tensors]
     
     match mode:
         case "grid":
             tensors = torch.cat(tensors)
-            _plot_grid(tensors, return_image=return_image, show_image=show_image)
+            return _plot_grid(tensors, backend=backend)
         case "horizontal":
             # _plot(einops.rearrange(tensors, "n c h w -> c h (w n)"))
             tensors = torch.cat(tensors, dim=-1)[0]
-            _plot(tensors)
+            return _plot(tensors, backend=backend)
         case "vertical":
             tensors = torch.cat(tensors, dim=-2)[0]
             print(tensors.shape)
-            _plot(tensors)
+            return _plot(tensors, backend=backend)
             # _plot(einops.rearrange(tensors, "n c h w -> c (h n) w"))
+        case "animate":
+            raise NotImplementedError(f"backend={backend}")
+            # return _plot(tensors, backend=backend)
+        case _:
+            raise ValueError(f"Unsupported mode: {mode}")
 
 def plot(
         *tensors: torch.Tensor, 
         mode: Literal["grid", "horizontal", "vertical"]="grid",
+        backend: plot_output_backend_type = default_plot_output_backend
     ):
-    plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode)
+    return plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode, backend=backend)
 
 
 def transpose(frames):
@@ -191,15 +231,17 @@ def transpose(frames):
 def plot_transpose(
         *tensors: torch.Tensor, 
         mode: Literal["grid", "horizontal", "vertical"]="grid",
+        backend: plot_output_backend_type = default_plot_output_backend
     ):
     tensors = [t.unsqueeze(0) if t.ndim == 3 else t for t in tensors]
-    plot_raw(*[transpose(t) for t in tensors], quantiles=(0.02, 0.98), cmap="viridis", mode=mode)
+    return plot_raw(*[transpose(t) for t in tensors], quantiles=(0.02, 0.98), cmap="viridis", mode=mode, backend=backend)
 
 def plot_T(
         *tensors: torch.Tensor, 
         mode: Literal["grid", "horizontal", "vertical"]="grid",
+        backend: plot_output_backend_type = default_plot_output_backend
     ):
-    plot_transpose(*tensors, mode=mode)
+    return plot_transpose(*tensors, mode=mode, backend=backend)
 
 #%%
 def crop_to_common_size(*tensors: torch.Tensor) -> Tuple[torch.Tensor]:
@@ -219,8 +261,3 @@ def crop_to_common_size(*tensors: torch.Tensor) -> Tuple[torch.Tensor]:
 
     return cropped_tensors
 
-def per_frame_mean(frames: torch.Tensor):
-    return frames.reshape((frames.shape[0], -1)).mean(-1)
-
-def plot_1D(frames: torch.Tensor):
-    plt.plot(per_frame_mean(frames).cpu().numpy())

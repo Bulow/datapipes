@@ -49,8 +49,13 @@ class TorchColormap:
     @torch.no_grad
     def __call__(self, t: torch.Tensor, vmin: float=None, vmax: float=None):
         in_dim = t.ndim
-        if in_dim == 3:
+        if t.ndim == 2:
              t = t.unsqueeze(0)
+        if t.ndim == 3:
+             t = t.unsqueeze(0)
+        if t.shape[-3] == 3:
+             # Frame is already RGB. Let it pass through unchanged
+             return t
         assert t.ndim == 4 and t.shape[1] == 1, f"t must have shape (n 1 h w), got {t.shape}"
         
         if self.v_min_max:
