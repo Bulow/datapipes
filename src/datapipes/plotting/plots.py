@@ -147,7 +147,7 @@ def _pad_to_largest(*tensors: torch.Tensor) -> Tuple[torch.Tensor]:
         pad_bottom = max_height - height - pad_top
         pad_left = (max_width - width) // 2
         pad_right = max_width - width - pad_left
-        padded_tensors.append(torch.nn.functional.pad(tensor, (pad_left, pad_right, pad_top, pad_bottom)))
+        padded_tensors.append(torch.nn.functional.pad(tensor, (pad_left, pad_right, pad_top, pad_bottom), value=tensor.min()))
     assert all(t.shape[-2:] == t[0].shape[-2:] for t in padded_tensors), f"All padded tensors must have the same height and width, got shapes: ({", ".join([f"{t.shape}" for t in padded_tensors])})"
     return padded_tensors
 
@@ -185,6 +185,10 @@ def plot_raw(
     if map01_individually:
         tensors = [map01(t) for t in tensors]
 
+    # Pad all to larges (H W) size
+    tensors = _pad_to_largest(*tensors if not isinstance(tensors, torch.Tensor) else tensors)
+
+
     if backend_needs_preprocessing(backend):
         # Apply color map to all
         if cmap is not None:
@@ -192,9 +196,7 @@ def plot_raw(
                 cmap = TorchColormap(cmap)
             tensors = [cmap(t) for t in tensors]
 
-    # Pad all to larges (H W) size
-    tensors = _pad_to_largest(*tensors if not isinstance(tensors, torch.Tensor) else tensors)
-
+    
     tensors = [t.unsqueeze(0) if len(t.shape)==3 else t for t in tensors]
     
     match mode:

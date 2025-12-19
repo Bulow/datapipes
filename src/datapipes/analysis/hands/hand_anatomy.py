@@ -169,15 +169,29 @@ def get_region_value_to_name_dict() -> Dict[str, int]:
 
 segment_values: Dict[str, int] = get_region_name_to_value_dict()
 
-def build_segments(landmarks: torch.Tensor) -> torch.Tensor:
+def denormalize_landmarks(normalized_landmarks: torch.Tensor, img_width: int, img_height: int) -> torch.Tensor:
+    # Convert landmarks to pixel coords
+    lm_px = normalized_landmarks.to(device="cuda", dtype=torch.float32).clone()
+    lm_px[:, 0] = lm_px[:, 0] * (img_width - 1)
+    lm_px[:, 1] = lm_px[:, 1] * (img_height - 1)
+
+    # Clamp to image bounds
+    lm_px[:, 0] = lm_px[:, 0].clamp(0, img_width - 1)
+    lm_px[:, 1] = lm_px[:, 1].clamp(0, img_height - 1)
+
+    return lm_px
+
+
+def build_segments(normalized_landmarks: torch.Tensor, img_width: int, img_height: int) -> torch.Tensor:
     """
     out: torch.Tensor (segment start_stop coord2D)
     """
-    markers = add_custom_markers(landmarks)
+    landmarks_px = denormalize_landmarks(normalized_landmarks=normalized_landmarks, img_width=img_width, img_height=img_height)
+    markers_px = add_custom_markers(landmarks_px)
     # rich.print(markers)
     segs = []
     for k, v in segments.items():
-        segs += [torch.stack((markers[start], markers[stop])) for start, stop in v]
+        segs += [torch.stack((markers_px[start], markers_px[stop])) for start, stop in v]
     out = torch.stack(segs).to("cuda")
     out = einops.rearrange(out, "s e c -> e s c")
     return out

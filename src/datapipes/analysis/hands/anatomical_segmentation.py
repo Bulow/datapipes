@@ -47,12 +47,10 @@ def _get_point_to_segment_distance(P, A, B, gradient: list[torch.Tensor], eps=1e
 
     return d, dp
 
-
 def _get_line_segment_distances(
     mask: torch.Tensor,
     gradient: torch.Tensor,
-    landmarks,
-    normalized_landmarks=True,
+    segments: torch.Tensor # (segments start_stop=2 coord2D=2)
 ):
     """
     mask:      [H,W] bool or 0/1 or 0..255 tensor (on CPU or CUDA)
@@ -75,21 +73,8 @@ def _get_line_segment_distances(
     g_mask = mask_bool #einops.repeat(mask_bool, "h w -> 2 h w")
     gx, gy = gradient[0, ...][g_mask], gradient[1, ...][g_mask]
 
-
-    # Convert landmarks to pixel coords
-    lm = landmarks.to(device=device, dtype=torch.float32)  # [21,2]
-    if normalized_landmarks:
-        lm_px = lm.clone()
-        lm_px[:, 0] = lm_px[:, 0] * (W - 1)
-        lm_px[:, 1] = lm_px[:, 1] * (H - 1)
-    else:
-        lm_px = lm
-
-    # Clamp to image bounds
-    lm_px[:, 0] = lm_px[:, 0].clamp(0, W - 1)
-    lm_px[:, 1] = lm_px[:, 1].clamp(0, H - 1)
-
-    segs = hand_anatomy.build_segments(lm_px)
+    segs = segments # TODO: remove
+    # segs = hand_anatomy.build_segments(lm_px)
     A = segs[0]
     B = segs[1]
 
@@ -139,9 +124,9 @@ def _compute_normal_map(image: torch.Tensor) -> torch.Tensor:
     
     # Normalize the normal vectors
     # n_norm = torch.sqrt(n[:, 0:1] ** 2 + n[:, 1:2] ** 2 + n[:, 2:3] ** 2)
-    # n_norm = (n.square().sum(1, keepdim=True).sqrt())
-    # normal_map = n / (n_norm + 1e-6)
-    normal_map = n
+    n_norm = (n.square().sum(1, keepdim=True).sqrt())
+    normal_map = n / (n_norm + 1e-6)
+    # normal_map = n
     # Remove the batch dimension and return the normal map with shape (3, H, W)
     return normal_map.squeeze(0)
 
@@ -166,6 +151,7 @@ def _prepare_gradients(img_data: torch.Tensor, mask: torch.Tensor) -> torch.Tens
 
     # Compute normalized gradients using a sobel filter
     gradient = _compute_normal_map(img_data).squeeze(0)
+
     
     # gradient[gradient > 0] = 1
     # gradient[gradient < 0] = -1
@@ -179,13 +165,12 @@ def _prepare_gradients(img_data: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     return gradient
 
 
-def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, landmarks, hand_idx: int=0, surface_optimization: bool=True) -> torch.Tensor:
+def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: torch.Tensor, use_surface_optimization: bool=True) -> torch.Tensor:
     _m, _gradient = plots.crop_to_common_size(mask, gradient)
     dists, dot_grad = _get_line_segment_distances(
         mask=_m[0],
         gradient=_gradient,
-        normalized_landmarks=True,
-        landmarks=hand_landmarks.landmarks_to_tensor(landmarks, hand_idx=hand_idx),
+        segments=segments
     )
 
     # Reconstruct maps from raw 1D pixels
@@ -200,74 +185,118 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, landmarks,
     d = einops.rearrange(dot_grad, "c d -> d 1 c")
     dot_grad_maps[..., mask[0] > 0] = d
 
-    # dot_grad_maps = kornia.filters.box_blur(dot_grad_maps, kernel_size=(9, 9))
-                                                                        
-    # dot_grad_maps[dot_grad_maps > 0] = 0
-    # dot_grad_maps[dot_grad_maps < 0] = -1
+    dot_grad_maps = F.sigmoid(dot_grad_maps * 30) - 0.5
 
-    # dot_grad_maps = kornia.filters.box_blur(dot_grad_maps, kernel_size=(9, 9))
-    # dot_grad_maps = kornia.filters.box_blur(dot_grad_maps, kernel_size=(9, 9))
-    # dot_grad_maps = kornia.filters.box_blur(dot_grad_maps, kernel_size=(9, 9))
-    
-    # dot_grad_maps[dot_grad_maps > -0.3] = 1
-    # dot_grad_maps[dot_grad_maps < -0.3] = -1
 
-    # dist_maps[dot_grad_maps < 0] = 1000
-    # dot_grad_maps = kornia.filters.median_blur(dot_grad_maps, kernel_size=(17, 17))
-    # dot_grad_maps = kornia.morphology.closing(dot_grad_maps, kernel_size=(9, 9))
-    # dot_grad_maps = kornia.morphology.closing(dot_grad_maps, torch.ones(size=(5, 5), dtype=torch.float32, device="cuda"), engine="convolution")#.to(torch.uint8)
     dot_grad_maps = kornia.filters.median_blur(dot_grad_maps, kernel_size=(9, 9))
+
     dot_grad_maps = kornia.filters.median_blur(dot_grad_maps, kernel_size=(9, 9))
-    dot_grad_maps = kornia.filters.median_blur(dot_grad_maps, kernel_size=(9, 9))
-    # dot_grad_maps = gradients.local_median2d_disk(dot_grad_maps, r=9)
-    # median_blur = kornia.filters.MedianBlur((11, 11))
-    # dot_grad_maps = median_blur(dot_grad_maps)
+    dot_grad_maps = kornia.filters.box_blur(dot_grad_maps, kernel_size=(9, 9))
+
+    plt_idx = 21
+
+
+    # Attenuate gradients of non digit segments
+    dot_grad_maps[17:] *= 0.1
 
     # Penalize distances where the gradient points away from each line segment
     _d, _g = plots.crop_to_common_size(dist_maps, dot_grad_maps)
     # plots.plot_raw(_g[8], quantiles=(0.02, 0.98), cmap="coolwarm")
 
+    delta_d = -((_d.sqrt() * (F.sigmoid(_g * 7) - 0.5)) * (15))
+    delta_d[delta_d < 0] *= 0
+
+    
 
     adjusted_dists = _d
-    if surface_optimization:
-        adjusted_dists = _d + (_d.sqrt() * (-_g) * 40)
-
-
-
-
-
-    
-
-    med_adjusted_dists = adjusted_dists
-    
+    if use_surface_optimization:
+        adjusted_dists += delta_d
 
     # Blur adjusted distances to remove disconnected pockets and increase region compactness
-    med_adjusted_dists = kornia.filters.box_blur(med_adjusted_dists, kernel_size=[8, 8])
-    med_adjusted_dists = kornia.filters.box_blur(med_adjusted_dists, kernel_size=[8, 8])
+    adjusted_dists = kornia.filters.box_blur(adjusted_dists, kernel_size=[8, 8])
+    adjusted_dists = kornia.filters.median_blur(adjusted_dists, kernel_size=[11, 11])
+
+    adjusted_dists = kornia.filters.box_blur(adjusted_dists, kernel_size=[8, 8])
 
 
-    med_adjusted_dists = kornia.filters.median_blur(med_adjusted_dists, kernel_size=[11, 11])
+    adjusted_dists = kornia.filters.median_blur(adjusted_dists, kernel_size=[11, 11])
 
-    med_adjusted_dists = kornia.filters.box_blur(med_adjusted_dists, kernel_size=[8, 8])
+    adjusted_dists = kornia.filters.box_blur(adjusted_dists, kernel_size=[8, 8])
+    adjusted_dists = kornia.filters.median_blur(adjusted_dists, kernel_size=[11, 11])
+
+    adjusted_dists = kornia.filters.box_blur(adjusted_dists, kernel_size=[8, 8])
 
     # plot(med_adjusted_dists[5:9])
 
 
     # Compute regions as index of closest line segment at each pixel
-    med_nearest = torch.argmin(med_adjusted_dists, dim=0)[0] + 1
+    nearest = torch.argmin(adjusted_dists, dim=0)[0] + 1
 
     # Apply mask
-    _m, _med_nearest = plots.crop_to_common_size(mask, med_nearest)
+    smooth_mask = kornia.filters.box_blur(mask.to(torch.float32).unsqueeze(0), kernel_size=[3, 3])
+    smooth_mask = (smooth_mask > 0.5).to(torch.uint8)
+    _m, _med_nearest = plots.crop_to_common_size(smooth_mask, nearest)
     out = _med_nearest * _m
 
     return out
 
-def compute_anatomical_mask(img_data: torch.Tensor, surface_optimization: bool=True) -> torch.Tensor:
+# , hand_name: Literal["Right", "Left"]
+def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True) -> torch.Tensor:
     mask = hand_segmentation.get_hand_mask(img_data)
-    gradient = _prepare_gradients(img_data.mean(0), mask)
-    landmarks = hand_landmarks.detect_landmarks(img_data=img_data.mean(0))
-    anatomy = _closest_segment_mask(mask=mask, gradient=gradient, landmarks=landmarks, hand_idx=0, surface_optimization=surface_optimization)
-    return anatomy
+    gradient = _prepare_gradients(img_data.std(0), mask)
+    raw_landmarks_mediapipe_fmt = hand_landmarks.detect_landmarks(img_data=img_data.mean(0))
+
+    hand_indices = {cat[0].category_name:cat[0].index for cat in raw_landmarks_mediapipe_fmt.handedness}
+    hands_landmarks_normalized = {hand_name:hand_landmarks.landmarks_to_tensor(raw_landmarks_mediapipe_fmt, hand_idx=idx) for hand_name, idx in hand_indices.items()}
+
+    hands_segments_px = {hand_name:hand_anatomy.build_segments(normalized_landmarks=normalized_landmarks_on_hand, img_width=mask.shape[-1], img_height=mask.shape[-2]) for hand_name, normalized_landmarks_on_hand in hands_landmarks_normalized.items()}
+
+    # Crop to bbox of chosen hand
+    # chosen_segments = hands_segments_px[hand_name]
+    bboxes = {}
+    anatomy_maps = []
+    out_seg_mask = torch.zeros_like(mask)
+    for hand_name, chosen_segments in hands_segments_px.items():
+        H, W = img_data.shape[-2:]
+        coords = einops.rearrange(chosen_segments, "e n c -> (e n) c") # coords = [x, y]
+
+        min_coord = coords.min(dim=0).values
+        max_coord = coords.max(dim=0).values
+
+        padding = 50 # px
+        min_coord -= padding
+        max_coord += padding
+        
+        min_coord = min_coord.clamp(min=0).to(torch.int)
+        max_coord = max_coord.clamp(max=torch.tensor([W, H], device=max_coord.device)).to(torch.int)
+        max_coord[-1] = H # Preserve wrist (assumes orientation)
+
+        min_h=min_coord[-1]
+        max_h=max_coord[-1]
+        min_w=min_coord[-2]
+        max_w=max_coord[-2]
+
+        bboxes[hand_name] = dict(
+            min_h=min_h,
+            max_h=max_h,
+            min_w=min_w,
+            max_w=max_w,
+        )
+
+        # print(f"h={max_h-min_h}, w={max_w-min_w}\nH={H}, W={W}")
+        
+        # cropped_img_data = img_data[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
+        cropped_mask = mask[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
+        cropped_gradients = gradient[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
+
+        relative_coords = coords - min_coord
+        relative_segments = einops.rearrange(relative_coords, "(e n) c -> e n c", e=2)
+
+        anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, segments=relative_segments, use_surface_optimization=use_surface_optimization)
+        # print(anatomy.shape)
+        out_seg_mask[:, min_h:max_h, min_w:max_w] = anatomy
+        anatomy_maps.append(anatomy)
+    return out_seg_mask, bboxes, anatomy_maps
 
 def compute_anatomical_markers(image: torch.Tensor, mode: Literal["single_flat_dict", "dict_per_hand"]="dict_per_hand") -> Dict[str, torch.Tensor]|Dict[str, Dict[str, torch.Tensor]]:
     landmarks = hand_landmarks.detect_landmarks(image)
@@ -284,6 +313,7 @@ def compute_anatomical_markers(image: torch.Tensor, mode: Literal["single_flat_d
             return flat_hands
         case _:
             raise ValueError(f"mode=\"{mode}\" is not supported")
+
 
 
 

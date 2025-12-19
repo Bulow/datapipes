@@ -109,7 +109,7 @@ def imshow_region_mask(
     fig.update_layout(margin=dict(l=0, r=0, t=30 if title else 0, b=0))
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x")
-    return fig
+    return fig.update_layout(dragmode='pan', hovermode='closest', margin=dict(l=0, r=0, t=0, b=0))
 
 def create_standalone_html_plot(fig: go.Figure, out_path: Path|str):
     plotly.io.write_html(
