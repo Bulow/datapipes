@@ -54,11 +54,11 @@ def add_custom_markers(landmarks: torch.Tensor) -> Dict[int, torch.Tensor]:
     markers[L.radius] = project_marker_along_segment(
         start=markers[L.wrist],
         stop=markers[L.pinky_mcp],
-        frac=-0.3
+        frac=-1.0 # 0.3
     )
 
     # Ulna
-    markers[L.ulna] = markers[L.wrist] - 0.3 * avg_dir(
+    markers[L.ulna] = markers[L.wrist] - 1.0 * avg_dir(
         start=markers[L.wrist],
         stop0=markers[L.index_mcp],
         stop1=markers[L.thumb_cmc]
@@ -176,8 +176,8 @@ def denormalize_landmarks(normalized_landmarks: torch.Tensor, img_width: int, im
     lm_px[:, 1] = lm_px[:, 1] * (img_height - 1)
 
     # Clamp to image bounds
-    lm_px[:, 0] = lm_px[:, 0].clamp(0, img_width - 1)
-    lm_px[:, 1] = lm_px[:, 1].clamp(0, img_height - 1)
+    # lm_px[:, 0] = lm_px[:, 0].clamp(0, img_width - 1)
+    # lm_px[:, 1] = lm_px[:, 1].clamp(0, img_height - 1)
 
     return lm_px
 

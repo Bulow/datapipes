@@ -269,7 +269,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         
         min_coord = min_coord.clamp(min=0).to(torch.int)
         max_coord = max_coord.clamp(max=torch.tensor([W, H], device=max_coord.device)).to(torch.int)
-        max_coord[-1] = H # Preserve wrist (assumes orientation)
+        # max_coord[-1] = H # Preserve wrist (assumes orientation)
 
         min_h=min_coord[-1]
         max_h=max_coord[-1]
