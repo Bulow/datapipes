@@ -11,7 +11,7 @@ import numpy as np
 from datapipes.sic import sic
 from dataclasses import dataclass
 from concurrent.futures import Future, as_completed, ThreadPoolExecutor
-
+from pathlib import Path
 # from datapipes.dataset_windows import ValidWindow, AutoUnpaddingWindow
 # from datapipes.nd_windows import NdValidWindow, NdAutoUnpaddingWindow
 from datapipes.auto_indexing_window import AutoIndexingWindow
@@ -43,6 +43,14 @@ class DataPipe(DatasetSource):
       
     def __repr__(self):
         return f"{type(self).__qualname__}(shape={self.shape}, segments={self.segments}, pad_size={self.pad_size})"
+    
+    @property
+    def timestamps(self) -> torch.LongTensor:
+        return self._dataset.timestamps
+    
+    @property
+    def path(self) -> Path:
+        return Path(self._dataset.path)
     
     @property
     def shape(self) -> torch.Tensor:

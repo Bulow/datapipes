@@ -24,16 +24,20 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
         return self.rls_file_reader.total_frame_count
     
     @property
-    def shape(self):
-        return self.rls_file_reader.total_frame_count, *self.rls_file_reader.get_frame_shape()
+    def path(self) -> Path:
+        return self.rls_file_reader.path
+    
+    @property
+    def shape(self) -> torch.Size:
+        return torch.Size((self.rls_file_reader.total_frame_count, *self.rls_file_reader.get_frame_shape()))
     
     def __getitem__(self, index) -> torch.Tensor:
         return self.rls_file_reader[index]
     
     @property
     def timestamps(self):
-        timestamps = self.rls_file_reader.timestamps
-        return timestamps.timestamps
+        timestamps = self.rls_file_reader.timestamps[:]
+        return timestamps
     
     @property
     def frame_index_in_recording(self):
@@ -49,7 +53,7 @@ class CachedTimestampList(Sequence):
 
     def __getitem__(self, index):
         if np.any(self.timestamps_read[index] == 0):
-            warnings.warn("All frames must be read before accessing timestamps, since RLS uses a discontiguous array-of-structs memory format")
+            raise BufferError("All frames must be read before accessing timestamps, since RLS uses a discontiguous array-of-structs memory format")
         return self.timestamps[index]
     
     def __setitem__(self, index, value):

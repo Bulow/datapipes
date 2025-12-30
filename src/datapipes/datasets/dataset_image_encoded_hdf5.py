@@ -1,12 +1,11 @@
 #%%
-import datapipes
 from datapipes.datasets.dataset_source import DatasetSource
 from pathlib import Path
 import torch
 import h5py
 import einops
 from typing import Any, List, Tuple
-
+from pathlib import Path
 from datapipes.save_datapipe.file_format import image_compression, metadata_utils, format_specification
 
 #%%
@@ -15,18 +14,20 @@ class DatasetCompressedImageStreamHdf5(DatasetSource):
         if isinstance(path, str):
              path = Path(path)
 
-        self.path = path
+        self._path = path
         self.file = h5py.File(path, "r")
 
         self.file_structure: format_specification.LsciEncodedFramesH5 = metadata_utils.deserialize_hdf5(self.file, format_specification.LsciEncodedFramesH5)
 
         self.frames = self.file_structure.frames.encoded_frames.ds
-        self.lengths = self.file_structure.frames.frame_lengths_bytes.ds
-        self.offsets = self.file_structure.frames.frame_start_memory_offsets.ds
+        self.lengths = torch.from_numpy(self.file_structure.frames.frame_lengths_bytes.ds[:]).to(torch.int64)
+        self.offsets = torch.from_numpy(self.file_structure.frames.frame_start_memory_offsets.ds[:]).to(torch.int64)
 
         self._shape = self.file_structure.frames.frame_parameters.shape
         self._length = self._shape[0]
         
+        self._timestamps = torch.from_numpy(self.file_structure.metadata.timestamps[:])
+
         if max_frames is not None:
             self._length = min(self._length, max_frames)
     
@@ -35,6 +36,14 @@ class DatasetCompressedImageStreamHdf5(DatasetSource):
     
     def get_frames_metadata(self) -> format_specification.FrameParameters:
         return self.file_structure.frames.frame_parameters
+    
+    @property
+    def timestamps(self) -> torch.LongTensor:
+        return self._timestamps
+    
+    @property
+    def path(self) -> Path:
+        return self._path
     
     @property
     def shape(self):
@@ -63,7 +72,7 @@ class DatasetCompressedImageStreamHdf5(DatasetSource):
                 return validate_index(index[0])
             
         if not validate_index(index):
-            raise IndexError(f"Index out of bounds: index={index}, length={self._length}")
+            raise IndexError(f"Index out of bounds: index={index}, length={len(self)}")
         
         return self.decode_range(index)
     
@@ -90,10 +99,9 @@ class DatasetCompressedImageStreamHdf5(DatasetSource):
 
         # Split
         frame_stream_views = []
-        for l, o in zip(lengths, relative_offsets):
-            frame_stream_views.append(raw_stream[o:o + l])
+        for ln, offs in zip(lengths, relative_offsets):
+            frame_stream_views.append(raw_stream[offs:offs + ln])
 
-        
         # TODO: Support block-based ROI-only decoding
         return image_compression.torch_decode(frame_stream_views, index if isinstance(index, tuple) else None)
     

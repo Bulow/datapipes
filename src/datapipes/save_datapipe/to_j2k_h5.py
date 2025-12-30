@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 
 from datapipes.datapipe import DataPipe
+from datapipes.deep_hasher import DeepHasher
 from datapipes.ops import Ops
 from datapipes.datasets.dataset_rls import DatasetRLS
 
@@ -93,7 +94,7 @@ def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group) -> format_specifi
 
     return live_view
 
-def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path):
+def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_hash: bool=True):
     # Prepare path
     if isinstance(out_path, str):
         out_path = Path(out_path)
@@ -101,6 +102,8 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path):
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # frames_buffer_upper_bound = int(np.prod(dp.shape))
+
+    source_hasher = DeepHasher.from_datapipe(dp)
 
     with h5py.File(out_path, "w") as f:
        
@@ -131,6 +134,8 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path):
         batch_start_byte_index = 0
         current_array_size = encoded_frames.shape[0]
         for batch in dp.batches_with_progressbar(batch_size=1024):
+            
+            source_hasher.update_frames(batch)
 
             # Encode batch
             encoded = torch_encode(batch, codec="jpeg2k", params=nv.EncodeParams(
@@ -174,15 +179,45 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path):
 
         encoded_frames.ds.resize((batch_start_byte_index, ))
 
+        source_hasher.update_metadata(dp.timestamps)
+
+        timestamps: h5py.Dataset = live_view.metadata.timestamps
+        timestamps[:] = dp.timestamps
+
         # metadata.create_dataset(name="timestamps", data=np.array(range(len(dp)), dtype=np.uint64))
-        ds = dp._dataset
-        if isinstance(ds, DatasetRLS):
-            timestamps: h5py.Dataset = live_view.metadata.timestamps
-            timestamps[:] = ds.rls_file_reader.timestamps
+
+            
 
         # print("\n")
         # print(f"Saved datapipe to {str(out_path.parent.absolute())}:")
         # visualize_structure(f, out_path.name)
+
+        if verify_deep_hash:
+            print("Verifying deep hashes of source and destination datasets.")
+            from datapipes.datasets.dataset_image_encoded_hdf5 import DatasetCompressedImageStreamHdf5
+            written_ds = DataPipe(DatasetCompressedImageStreamHdf5(path=out_path))
+            written_hasher = DeepHasher.from_datapipe(written_ds)
+            written_hasher.update_datapipe(written_ds)
+            written_hasher.update_metadata(written_ds.timestamps)
+
+            n = 64
+            sh = source_hasher.digest(n)
+            wh = written_hasher.digest(n)
+
+            hashes_match = sh == wh
+
+            print(f"Hashes match: {hashes_match}")
+
+            if not hashes_match:
+                rich.print(f"source: {sh}", f"destination: {wh}")
+                raise RuntimeError(f"Deep hashes of source and destination datasets do not match")
+
+            # rich.print(sh, wh)
+
+            return source_hasher, written_hasher
+        else:
+            return source_hasher
+
 
 ##%%
 

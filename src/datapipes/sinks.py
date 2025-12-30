@@ -86,10 +86,10 @@ def subbatch(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=False, p
     for batch, _ in subbatch_emit_indices(dp=dp, idx=idx, batch_size=batch_size, progressbar=progressbar, pb_description=pb_description):
         yield batch
 
-def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=True) -> torch.Tensor:
-    batches = []
+def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=True, destination_device="cpu") -> torch.Tensor:
+    batches = [] # TODO: Write directly to an empty tensor to avoid cat
     for batch in subbatch(dp=dp, idx=idx, batch_size=batch_size, progressbar=progressbar):
-        batches.append(batch)
+        batches.append(batch.to("cpu", non_blocking=True))
     return torch.cat(batches, axis=0)
 
 def sum(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.Tensor:
@@ -106,3 +106,18 @@ def mean(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch
         total_sum += batch.sum(0)
     total_sum /= len(frames)
     return total_sum
+
+from blake3 import blake3
+
+def hash_frames(frames: DataPipe, batch_size=512, digest_length=32):
+    hasher = blake3(max_threads=blake3.AUTO)
+    base_str = f"shape={torch.Size(frames.shape)}, dtype={frames[0].dtype}"
+    print(base_str)
+    hasher.update(base_str.encode(encoding="utf-8"))
+    for batch in subbatch(dp=frames, idx=slice(None), batch_size=batch_size, progressbar=True):
+        hasher.update(batch.cpu().numpy())
+    return hasher.digest(length=digest_length)
+
+
+
+# %%
