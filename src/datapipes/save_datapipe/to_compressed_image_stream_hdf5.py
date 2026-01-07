@@ -226,24 +226,3 @@ def datapipe_to_compressed_image_stream_hdf5(dp: DataPipe, out_path: str|Path, e
             batch_start_byte_index += current_batch_byte_length
 
         encoded_frames.ds.resize((batch_start_byte_index, ))
-
-        # metadata.create_dataset(name="timestamps", data=np.array(range(len(dp)), dtype=np.uint64))
-
-        # print("\n")
-        # print(f"Saved datapipe to {str(out_path.parent.absolute())}:")
-        # visualize_structure(f, out_path.name)
-
-##%%
-
-# if __name__ == "__main__":
-#     raw: DataPipe = (
-#         DataPipe(datapipes.datasets.DatasetRLS(R"C:\Workspace\DataAnalysis\ror\data\20230111_PSO01_a1.rls"))
-#         # | Ops.to("cuda")
-
-#     )
-
-#     out_path = Path("lossless.j2k.hdf5")
-#     datapipe_to_compressed_image_stream_hdf5(raw, out_path=out_path)
-
-
-#%%

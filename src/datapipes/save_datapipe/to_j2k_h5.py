@@ -201,20 +201,6 @@ def verify_lossless_j2k_h5(path: Path, progress_bar: Callable[[Iterable, int, st
     written_hasher.ingest_metadata(written_ds.timestamps)
     return written_hasher
 
-##%%
-
-# if __name__ == "__main__":
-#     raw: DataPipe = (
-#         DataPipe(datapipes.datasets.DatasetRLS(R"C:\Workspace\DataAnalysis\ror\data\20230111_PSO01_a1.rls"))
-#         # | Ops.to("cuda")
-
-#     )
-
-#     out_path = Path("lossless.j2k.hdf5")
-#     datapipe_to_compressed_image_stream_hdf5(raw, out_path=out_path)
-
-
-#%%
 
 import threading
 import queue

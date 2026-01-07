@@ -163,36 +163,3 @@ def write_datapipe_to_rls(data: DataPipe, path: Path|str, batch_size: int=256):
 
                 
                 rec.write(np.ascontiguousarray(interleave_buffer[0:current_batch_length]).tobytes())
-
-
-
-
-
-# # if __name__ == "__main__":
-# #%%
-# from dataset_rls import DatasetRLS
-# from ops import Ops
-# import time
-
-# path = Path(R"data\20230111_PSO01_a1.rls")
-# out_path = path.with_suffix(".new.rls")
-# rls_ds = DataPipe(DatasetRLS(path)) #, max_frames=16384)) #| (lambda f: 255 - f) | Ops.to(torch.uint8)
-
-
-# #%%
-# start_time = time.perf_counter()
-
-# write_datapipe_to_rls(data=rls_ds, path=out_path, batch_size=1024)
-
-# end_time = time.perf_counter()
-
-# print(f"write_datapipe_to_rls took {end_time - start_time:.2f} seconds")
-
-# #%%
-
-# rec_dtype = np.dtype([
-#             ("frames", np.uint8, (1, 1024, 1024)),
-#             ("timestamps", np.uint64),
-#         ])
-
-# ic(rec_dtype)
