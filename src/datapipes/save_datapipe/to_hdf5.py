@@ -1,13 +1,10 @@
 from datapipes.datapipe import DataPipe
 from pathlib import Path
 import numpy as np
-from datapipes.io_pipeline import Pipeline
 from datapipes.ops import Ops
 
 import h5py
-import hdf5plugin
 
-import torch
 
 from datapipes.datasets.dataset_hdf5 import LSCI_HDF5_FORMAT
 

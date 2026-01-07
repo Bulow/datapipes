@@ -2,7 +2,7 @@ from datapipes.save_datapipe.RLS_file_writer import prepare_rls_file, RLS_Writer
 from datapipes.datapipe import DataPipe
 from pathlib import Path
 import numpy as np
-from datapipes.io_pipeline import Pipeline
+from datapipes.utils.io_pipeline import Pipeline
 
 def datapipe_to_rls(dp: DataPipe, out_path: Path, n_writers: int=4, n_fetchers: int=4, batch_size=1024):
 

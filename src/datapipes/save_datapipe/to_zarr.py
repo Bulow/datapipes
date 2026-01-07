@@ -12,10 +12,8 @@ from zarr.codecs import numcodecs
 from datapipes.datapipe import DataPipe
 from pathlib import Path
 import numpy as np
-from datapipes.io_pipeline import Pipeline
+from datapipes.utils.io_pipeline import Pipeline
 from datapipes.ops import Ops
-
-
 
 def datapipe_to_zarr(dp: DataPipe, out_path: str|Path, n_writers: int=4, n_fetchers: int=4, batch_size: int=256):
 

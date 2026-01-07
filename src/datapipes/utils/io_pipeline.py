@@ -1,6 +1,6 @@
 import threading
 import queue
-from typing import Iterable, List, Optional, Any, Tuple, Callable
+from typing import Iterable, List, Optional, Any, Tuple
 from tqdm import tqdm
 
 class Pipeline:
@@ -13,8 +13,8 @@ class Pipeline:
 
     def __init__(
         self,
-        fetch_data: Callable[[slice], Any],
-        write_data: Callable[[slice, Any], None],
+        fetch_data,
+        write_data,
         *,
         max_ready_queue: int = 64,
         num_fetch_workers: int = 4,

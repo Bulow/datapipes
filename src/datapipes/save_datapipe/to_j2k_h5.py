@@ -1,27 +1,19 @@
 #%%
-import torch
 import numpy as np
 from pathlib import Path
 
 from datapipes.datapipe import DataPipe
-from datapipes.deep_hasher import DeepHasher
-from datapipes.ops import Ops
-from datapipes.datasets.dataset_rls import DatasetRLS
-
-import rich
+from datapipes.utils.deep_hasher import DeepHasher
 import h5py
-import hdf5plugin
 
 import nvidia.nvimgcodec as nv
 from tqdm import tqdm
-from typing import Literal, Callable, Iterable, Iterator, Any, Optional
-from functools import partial
+from typing import Callable, Iterable, Iterator
 
 #%%
 
 from datapipes.save_datapipe.file_format import format_specification, metadata_utils
 
-from datapipes.save_datapipe.file_format.inspect_hdf5 import visualize_structure
 from datapipes.save_datapipe.file_format.image_compression import torch_encode
 
 def populate_metadata(dp: DataPipe):
@@ -201,11 +193,11 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: in
         return source_hasher
 
 
-def verify_lossless_j2k_h5(path: Path) -> DeepHasher:
+def verify_lossless_j2k_h5(path: Path, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm) -> DeepHasher:
     from datapipes.datasets.dataset_image_encoded_hdf5 import DatasetCompressedImageStreamHdf5
     written_ds = DataPipe(DatasetCompressedImageStreamHdf5(path=path))
     written_hasher = DeepHasher.from_datapipe(written_ds)
-    written_hasher.ingest_datapipe(written_ds, progress_bar=progress_bar, pb_description=f"Verifying hash of {out_path.name}")
+    written_hasher.ingest_datapipe(written_ds, progress_bar=progress_bar, pb_description=f"Verifying hash of {path.name}")
     written_hasher.ingest_metadata(written_ds.timestamps)
     return written_hasher
 
@@ -226,7 +218,7 @@ def verify_lossless_j2k_h5(path: Path) -> DeepHasher:
 
 import threading
 import queue
-from typing import Generic, Iterable, Iterator, Optional, TypeVar, Union
+from typing import Generic, Iterable, Iterator, TypeVar, Union
 
 T = TypeVar("T")
 
