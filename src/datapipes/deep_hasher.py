@@ -140,7 +140,7 @@ def compare_hashes(source_hasher: DeepHasher, destination_hasher: DeepHasher, di
     print(f"Hashes match: {hashes_match}")
 
     if not hashes_match:
-        print(f"source: {sh}", f"destination: {wh}")
+        print(f"source: {source_hash}", f"destination: {destination_hash}")
         raise RuntimeError(f"Deep hashes of source and destination datasets do not match.\n\n{source_hash=}, {destination_hash=}")
     
     return hashes_match

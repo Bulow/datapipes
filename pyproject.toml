@@ -40,6 +40,7 @@ dependencies = [
     "imagecodecs[all]>=2025.11.11",
     "nvidia-nvimgcodec-cu12[all]>=0.6.1.37",
     "gradio>=6.2.0",
+    "blake3>=1.0.8",
 ]
 
 #[project.urls]
