@@ -664,10 +664,12 @@ dependencies = [
     { name = "ndindex" },
     { name = "numcodecs" },
     { name = "numpy" },
+    { name = "nvidia-ml-py" },
     { name = "nvidia-nvimgcodec-cu12", extra = ["all"] },
     { name = "pandas" },
     { name = "pillow" },
     { name = "plotly" },
+    { name = "psutil" },
     { name = "pyglm" },
     { name = "pynvvideocodec" },
     { name = "rich" },
@@ -704,10 +706,12 @@ requires-dist = [
     { name = "ndindex", specifier = ">=1.10.0" },
     { name = "numcodecs", specifier = ">=0.16.3" },
     { name = "numpy", specifier = ">=2.3.3" },
+    { name = "nvidia-ml-py", specifier = ">=13.590.44" },
     { name = "nvidia-nvimgcodec-cu12", extras = ["all"], specifier = ">=0.6.1.37" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "plotly", specifier = ">=6.5.0" },
+    { name = "psutil", specifier = ">=7.1.3" },
     { name = "pyglm", specifier = ">=2.8.2" },
     { name = "pynvvideocodec", specifier = ">=2.0.3" },
     { name = "rich", specifier = ">=14.2.0" },
@@ -2388,6 +2392,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/23/b20f2381c7e92c704386428fe79736a13c50f452376453fdc60fcc0ec1b0/nvidia_libnvcomp_cu12-5.1.0.21-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:77dfb3cb8c8995dfa0279ba99b0501e03cbe77e876aab44f4693abdcfac549ce", size = 28802614, upload-time = "2025-12-02T19:05:08.101Z" },
     { url = "https://files.pythonhosted.org/packages/08/ab/844fcbaa46cc1242632b4b94b4ffc210ec3d8d8f30ad8f7f1c27767389a9/nvidia_libnvcomp_cu12-5.1.0.21-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:68de61183edb9a870c9a608273a2b5da97dea18e3552096c61fafd9bb2689db0", size = 28958714, upload-time = "2025-12-02T19:01:40.466Z" },
     { url = "https://files.pythonhosted.org/packages/c4/cc/c6e92d9587b9ad63c08b1b94c5ae2216319491d0bd4f40f2a9a431d4841f/nvidia_libnvcomp_cu12-5.1.0.21-py3-none-win_amd64.whl", hash = "sha256:1352c7c4264ee5357f8f20e4a8da7f2f91debe21d8968f44576a7f4b51f91533", size = 28490640, upload-time = "2025-12-02T19:07:28.096Z" },
+]
+
+[[package]]
+name = "nvidia-ml-py"
+version = "13.590.44"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/23/3871537f204aee823c574ba25cbeb08cae779979d4d43c01adddda00bab9/nvidia_ml_py-13.590.44.tar.gz", hash = "sha256:b358c7614b0fdeea4b95f046f1c90123bfe25d148ab93bb1c00248b834703373", size = 49737, upload-time = "2025-12-08T14:41:10.872Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/47/4c822bd37a008e72fd5a0eae33524ae3ac97b13f7030f63bae1728b8957e/nvidia_ml_py-13.590.44-py3-none-any.whl", hash = "sha256:18feb54eca7d0e3cdc8d1a040a771eda72d9ec3148e5443087970dbfd7377ecc", size = 50683, upload-time = "2025-12-08T14:41:09.597Z" },
 ]
 
 [[package]]

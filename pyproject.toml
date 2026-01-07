@@ -41,13 +41,13 @@ dependencies = [
     "nvidia-nvimgcodec-cu12[all]>=0.6.1.37",
     "gradio>=6.2.0",
     "blake3>=1.0.8",
+    "psutil>=7.1.3",
+    "nvidia-ml-py>=13.590.44",
 ]
 
-#[project.urls]
-## This is critical for uv/pip to locate non-PyPI wheels
-## uv understands --extra-index-url via dependency-url mapping
-#"torch" = "https://download.pytorch.org/whl/cu128"
-#"torchvision" = "https://download.pytorch.org/whl/cu128"
+[project.scripts]
+dataset-wrangler = "datapipes.tools.dataset_wrangler_cli:main"
+
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
