@@ -1,9 +1,9 @@
 [project]
 name = "DataPipes"
-version = "0.1.0"
+version = "0.1.01"
 description = "DataPipes"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "torch>=2.8.0",
     "torchvision>=0.23.0",
@@ -47,7 +47,7 @@ dependencies = [
 
 [project.scripts]
 dataset-wrangler = "datapipes.tools.dataset_wrangler_cli:main"
-
+datapipes = "datapipes.tools.datapipes_cli:main"
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -77,4 +77,4 @@ where = ["src/resources"]
 resources = ["datapipes/utils/resources"]
 stbn = ["stbn.pt"] # Repackaged from https://github.com/NVIDIA-RTX/STBN/
 mediapipe_hand_landmarker = ["hand_landmarker.task"] # From https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker
-
+quickstart = ["quickstart.zip"]

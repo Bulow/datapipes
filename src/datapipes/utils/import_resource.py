@@ -1,6 +1,7 @@
 from importlib.resources import files, as_file
 import torch
 from pathlib import Path
+import zipfile
 
 _resources_root: str = "datapipes.utils.resources"
 
@@ -21,3 +22,13 @@ def get_bytes(resource_relative_path: str) -> bytes:
         content = resource_path.read_bytes()
     
     return content
+
+def extract_file(resource_relative_path: str, destination: Path):
+    resource = files(_resources_root).joinpath(resource_relative_path)
+    with as_file(resource) as payload_zip:
+        if not destination.is_dir():
+            raise ValueError(f"Destination {destination} is not a valid folder")
+        
+        with zipfile.ZipFile(payload_zip, 'r') as zip_ref:
+            zip_ref.extractall(destination)
+
