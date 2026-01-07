@@ -2,6 +2,7 @@
 from typing import Protocol, Tuple, Sequence
 import torch
 from torch.utils.data import Dataset, DataLoader
+from pathlib import Path
 
 # class PytorchDatasetWrapper(Dataset):
 #     def __init__(self, dataset: Dataset):
@@ -17,6 +18,15 @@ class DatasetSource(Dataset):
     @property
     def shape(self) -> Tuple[int, ...]:
         ...
+
+    @property
+    def timestamps(self) -> torch.LongTensor:
+        ...
+    
+    @property
+    def path(self) -> Path:
+        ...
+    
 
     def as_pytorch_dataloader(self, batch_size: int=128, shuffle: bool=True) -> DataLoader:
         return DataLoader(dataset=self, batch_size=batch_size, shuffle=shuffle)

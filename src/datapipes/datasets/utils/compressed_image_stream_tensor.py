@@ -1,16 +1,9 @@
 #%%
-import datapipes
-from datapipes.datasets.dataset_source import DatasetSource
-from pathlib import Path
 import torch
-import h5py
-import einops
-from typing import Any, List, Tuple, Optional, Callable
-import numpy as np
-from datapipes.save_datapipe.file_format import image_compression, metadata_utils, format_specification
-import nvidia.nvimgcodec as nv
+from typing import Optional
+from datapipes.save_datapipe.file_format import image_compression
 #%%
-class CompressedImageStreamDataset(DatasetSource):
+class CompressedImageStreamTensor:
     def __init__(self, frames, lengths, offsets, individual_frame_shape: Optional[torch.Size]=None):
         self.frames = frames
         self.lengths = lengths

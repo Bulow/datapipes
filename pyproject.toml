@@ -39,6 +39,7 @@ dependencies = [
     "mediapipe>=0.10.31",
     "imagecodecs[all]>=2025.11.11",
     "nvidia-nvimgcodec-cu12[all]>=0.6.1.37",
+    "gradio>=6.2.0",
 ]
 
 #[project.urls]

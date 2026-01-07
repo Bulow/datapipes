@@ -9,6 +9,33 @@ from datapipes.utils import cache_results
 from datapipes.utils import import_resource
 # from datapipes.utils import noise
 
+import logging
+import traceback
+
+_logging_enabled: bool = False
+
+def enable_logging(level=logging.INFO):
+    
+
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('datapipes.log'),
+            logging.StreamHandler()
+        ]
+    )
+
+def get_logger(name: str): # -> logger.Logger:
+    if not _logging_enabled:
+        enable_logging()
+
+    return logging.getLogger(__name__)
+
+# logger = get_logger(__name__)
+
+
 def enable_jupyter_autoreload():
     from IPython import get_ipython
 

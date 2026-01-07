@@ -24,7 +24,7 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
         return self.rls_file_reader.total_frame_count
     
     @property
-    def path(self) -> Path:
+    def _path(self) -> Path:
         return self.rls_file_reader.path
     
     @property
@@ -175,8 +175,8 @@ class RLS_FileReader:
         
         timestamps = torch.as_strided(flat_tensor, size=(frame_count, self.timestamp_size), 
             stride=(
-                self.size_second_dim * self.size_first_dim * self.bytes_per_pixel,                        # Frame
-                1                                                                       # Byte (self.timestamp_size=8 per timestamp)
+                self.timestamp_size + self.size_second_dim * self.size_first_dim * self.bytes_per_pixel,                        # Frame
+                1,                                                                      # Byte (self.timestamp_size=8 per timestamp)
             ), 
             storage_offset=0).view(torch.uint64).squeeze(1)                             # Reinterpret those 8 bytes as a uint64
 

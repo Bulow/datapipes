@@ -16,9 +16,9 @@ from pathlib import Path
 
 class DatasetVideoFile(DatasetSource):
     def __init__(self, path: Path|str):
-        self.path = Path(path)
+        self._path = Path(path)
 
-        self.decoder = nvc.SimpleDecoder(self.path.as_posix(), use_device_memory=True, output_color_type=nvc.OutputColorType.NATIVE)
+        self.decoder = nvc.SimpleDecoder(self._path.as_posix(), use_device_memory=True, output_color_type=nvc.OutputColorType.NATIVE)
 
         metadata = self.decoder.get_stream_metadata() 
         self._shape = (metadata.num_frames, 1, metadata.height, metadata.width)
@@ -26,6 +26,15 @@ class DatasetVideoFile(DatasetSource):
     @property
     def shape(self):
         return self._shape
+    
+    @property
+    def timestamps(self) -> torch.LongTensor:
+        # TODO: Implement
+        raise NotImplementedError()
+    
+    @property
+    def path(self) -> Path:
+        return self._path
     
     def __len__(self):
         return self.shape[0]

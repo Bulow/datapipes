@@ -45,7 +45,7 @@ class DatasetHDF5(DatasetSource):
     def __init__(self, path: Path|str, *, force_no_mean=False, max_frames=None):
         if isinstance(path, str):
              path = Path(path)
-        self.path = path
+        self._path = path
         self.file = h5py.File(path, "r")
         self.frames, self.timestamps, self.frame_index_in_recording, self.mean_frame = self.load_hdf5_dataset(path)
         self.length = len(self.frames)

@@ -44,8 +44,7 @@ Codec = Literal["jpeg", "jpeg2k"]
     
 
 def _get_gpu_encoder():
-    return nvimgcodec.Encoder(backends=[nvimgcodec.Backend(nvimgcodec.GPU_ONLY, load_hint=0.5)
-                             , nvimgcodec.Backend(nvimgcodec.HYBRID_CPU_GPU)])
+    return nvimgcodec.Encoder(backends=[nvimgcodec.Backend(nvimgcodec.GPU_ONLY, load_hint=0.5), nvimgcodec.Backend(nvimgcodec.HYBRID_CPU_GPU)])
 
 def _get_gpu_decoder():
     return nvimgcodec.Decoder(backends=[nvimgcodec.Backend(nvimgcodec.GPU_ONLY, load_hint=0.5), nvimgcodec.Backend(nvimgcodec.HYBRID_CPU_GPU)])
@@ -54,7 +53,7 @@ encoder = _get_gpu_encoder()
 decoder = _get_gpu_decoder()
 
 def torch_encode(frames: torch.Tensor, codec: Optional[Codec]="jpeg2k", params: Optional[nvimgcodec.EncodeParams]=None) -> list[bytes]:
-    nv_images = nvimgcodec.as_images([f for f in einops.rearrange(frames.to("cuda"), "F 1 H W -> F H W 1").contiguous()])
+    nv_images = nvimgcodec.as_images([f for f in einops.rearrange(frames.to("cuda", non_blocking=True), "F 1 H W -> F H W 1").contiguous()])
     encoded = encoder.encode(nv_images, codec, params=params)
     if encoded[0] is None:
         raise NotImplementedError(f"Compression parameters result in compression error. This is caused inside nvimagecodec. Possible explanation if using j2k: j2k in high throughput mode is very picky about parameters")

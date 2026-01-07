@@ -9,7 +9,7 @@ import numpy as np
 from datapipes.save_datapipe.file_format import image_compression, metadata_utils, format_specification
 import nvidia.nvimgcodec as nv
 #%%
-class CompressedImageTensor(DatasetSource):
+class DynamicCompressedImageStreamTensor:
     def __init__(self):
         self.frames = bytearray()
         self.lengths = []
@@ -43,8 +43,6 @@ class CompressedImageTensor(DatasetSource):
                 jpeg2k_encode_params=self._jpeg2k_params
             )
         )
-        # import rich
-        # rich.inspect(encoded[0])
 
         # Compute indices
         lengths = np.fromiter([len(f) for f in encoded], dtype=np.uint64)
@@ -58,22 +56,12 @@ class CompressedImageTensor(DatasetSource):
         current_batch_byte_length = len(flat_array)
 
         self.lengths[self.batch_start_frame_index:self.batch_start_frame_index + current_batch_frame_length] = lengths
-
         self.offsets[self.batch_start_frame_index:self.batch_start_frame_index + current_batch_frame_length] = offsets + self.batch_start_byte_index
-
-        # size_after_write = self.batch_start_byte_index + current_batch_byte_length
-        # if (current_array_size < size_after_write):
-        #     current_array_size = size_after_write * 2
-        #     self.frames.ds.resize((current_array_size, ))
-
         self.frames[self.batch_start_byte_index:self.batch_start_byte_index + current_batch_byte_length] = flat_array
 
         # Update position
         self.batch_start_frame_index += current_batch_frame_length
         self.batch_start_byte_index += current_batch_byte_length
-
-        # self.frames.ds.resize((batch_start_byte_index, ))
-        # print(f"frames size: {len(self.frames)}")
 
     @property
     def shape(self):

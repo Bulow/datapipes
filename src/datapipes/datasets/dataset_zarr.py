@@ -32,7 +32,7 @@ class DatasetZarr(DatasetSource):
     def __init__(self, path: Path|str, *, max_frames=None):
         if isinstance(path, str):
              path = Path(path)
-        self.path = path
+        self._path = path
         self.store = zarr.storage.ZipStore(path, mode='r')
         self.file = zarr.open_group(store=self.store, mode='r')
         self.frames, self.timestamps, self.frame_index_in_recording = self.load_zarr_dataset(path)

@@ -13,7 +13,9 @@ import h5py
 import hdf5plugin
 
 import nvidia.nvimgcodec as nv
-
+from tqdm import tqdm
+from typing import Literal, Callable, Iterable, Iterator, Any, Optional
+from functools import partial
 
 #%%
 
@@ -94,7 +96,7 @@ def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group) -> format_specifi
 
     return live_view
 
-def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_hash: bool=True):
+def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: int=512, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm) -> DeepHasher:
     # Prepare path
     if isinstance(out_path, str):
         out_path = Path(out_path)
@@ -124,7 +126,7 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_ha
         # return
 
         jpeg2k_params = nv.Jpeg2kEncodeParams()
-        jpeg2k_params.num_resolutions = 4
+        # jpeg2k_params.num_resolutions = 4
         # jpeg2k_params.code_block_size = (block_size, block_size)
         jpeg2k_params.bitstream_type = nv.Jpeg2kBitstreamType.J2K
         # jpeg2k_params.prog_order = nv.Jpeg2kProgOrder.PCRL
@@ -133,16 +135,28 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_ha
         batch_start_frame_index = 0
         batch_start_byte_index = 0
         current_array_size = encoded_frames.shape[0]
-        for batch in dp.batches_with_progressbar(batch_size=1024):
-            
-            source_hasher.update_frames(batch)
+        # for batch in dp.batches_with_progressbar(batch_size=batch_size, title=f"Converting file {dp.path.name}", progress_bar=progress_bar):
+
+        def encoded_frames_it() -> Iterator:
+            for batch in PrefetchIterator(dp.batches(batch_size=batch_size)):
+                encoded = torch_encode(batch, codec="jpeg2k", params=nv.EncodeParams(
+                        quality_type = nv.QualityType.LOSSLESS,
+                        jpeg2k_encode_params=jpeg2k_params
+                    )
+                )
+                yield batch, encoded
+                
+
+        for batch, encoded in progress_bar(PrefetchIterator(encoded_frames_it()), len(dp), f"Converting file {dp.path.name}"):
+            print(f"{batch = }, {type(batch) = }")
+            source_hasher.ingest_frames(batch)
 
             # Encode batch
-            encoded = torch_encode(batch, codec="jpeg2k", params=nv.EncodeParams(
-                    quality_type = nv.QualityType.LOSSLESS,
-                    jpeg2k_encode_params=jpeg2k_params
-                )
-            )
+            # encoded = torch_encode(batch, codec="jpeg2k", params=nv.EncodeParams(
+            #         quality_type = nv.QualityType.LOSSLESS,
+            #         jpeg2k_encode_params=jpeg2k_params
+            #     )
+            # )
 
             # encoded = torch_encode(batch, codec="jpeg2k", params=nv.EncodeParams(
             #         quality_type = nv.QualityType.QUANTIZATION_STEP,
@@ -179,45 +193,21 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_ha
 
         encoded_frames.ds.resize((batch_start_byte_index, ))
 
-        source_hasher.update_metadata(dp.timestamps)
+        source_hasher.ingest_metadata(dp.timestamps)
 
         timestamps: h5py.Dataset = live_view.metadata.timestamps
         timestamps[:] = dp.timestamps
 
-        # metadata.create_dataset(name="timestamps", data=np.array(range(len(dp)), dtype=np.uint64))
+        return source_hasher
 
-            
 
-        # print("\n")
-        # print(f"Saved datapipe to {str(out_path.parent.absolute())}:")
-        # visualize_structure(f, out_path.name)
-
-        if verify_deep_hash:
-            print("Verifying deep hashes of source and destination datasets.")
-            from datapipes.datasets.dataset_image_encoded_hdf5 import DatasetCompressedImageStreamHdf5
-            written_ds = DataPipe(DatasetCompressedImageStreamHdf5(path=out_path))
-            written_hasher = DeepHasher.from_datapipe(written_ds)
-            written_hasher.update_datapipe(written_ds)
-            written_hasher.update_metadata(written_ds.timestamps)
-
-            n = 64
-            sh = source_hasher.digest(n)
-            wh = written_hasher.digest(n)
-
-            hashes_match = sh == wh
-
-            print(f"Hashes match: {hashes_match}")
-
-            if not hashes_match:
-                rich.print(f"source: {sh}", f"destination: {wh}")
-                raise RuntimeError(f"Deep hashes of source and destination datasets do not match")
-
-            # rich.print(sh, wh)
-
-            return source_hasher, written_hasher
-        else:
-            return source_hasher
-
+def verify_lossless_j2k_h5(path: Path) -> DeepHasher:
+    from datapipes.datasets.dataset_image_encoded_hdf5 import DatasetCompressedImageStreamHdf5
+    written_ds = DataPipe(DatasetCompressedImageStreamHdf5(path=path))
+    written_hasher = DeepHasher.from_datapipe(written_ds)
+    written_hasher.ingest_datapipe(written_ds, progress_bar=progress_bar, pb_description=f"Verifying hash of {out_path.name}")
+    written_hasher.ingest_metadata(written_ds.timestamps)
+    return written_hasher
 
 ##%%
 
@@ -233,3 +223,128 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, verify_deep_ha
 
 
 #%%
+
+import threading
+import queue
+from typing import Generic, Iterable, Iterator, Optional, TypeVar, Union
+
+T = TypeVar("T")
+
+
+class PrefetchIterator(Generic[T]):
+    """
+    Wrap an iterator/iterable and prefetch items into a queue on a background thread.
+
+    - Bounded queue provides backpressure (producer blocks when full).
+    - Exceptions in the producer are re-raised in the consumer thread.
+    - Supports clean shutdown via close() or context manager.
+    """
+
+    _SENTINEL = object()
+
+    def __init__(
+        self,
+        source: Union[Iterable[T], Iterator[T]],
+        *,
+        max_prefetch: int = 3,
+        daemon: bool = True,
+    ) -> None:
+        if max_prefetch < 1:
+            raise ValueError("max_prefetch must be >= 1")
+
+        self._it: Iterator[T] = iter(source)
+        self._q: "queue.Queue[object]" = queue.Queue(maxsize=max_prefetch)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._worker, daemon=daemon)
+
+        self._started = False
+        self._closed = False
+
+    def _ensure_started(self) -> None:
+        if not self._started:
+            self._started = True
+            self._thread.start()
+
+    def _put_blocking(self, item: object) -> None:
+        """
+        Put with periodic stop-checking so close() doesn't hang.
+        """
+        while not self._stop.is_set():
+            try:
+                self._q.put(item, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+        # If we're stopping, don't block further.
+
+    def _worker(self) -> None:
+        try:
+            for item in self._it:
+                if self._stop.is_set():
+                    break
+                self._put_blocking(item)
+        except BaseException as e:
+            # Send exception to consumer
+            self._put_blocking(e)
+        finally:
+            # Signal completion
+            self._put_blocking(self._SENTINEL)
+
+    def __iter__(self) -> "PrefetchIterator[T]":
+        self._ensure_started()
+        return self
+
+    def __next__(self) -> T:
+        self._ensure_started()
+        if self._closed:
+            raise StopIteration
+
+        while True:
+            obj = self._q.get()  # blocks until available
+            if obj is self._SENTINEL:
+                self._closed = True
+                raise StopIteration
+            if isinstance(obj, BaseException):
+                self.close()
+                raise obj
+            return obj  # type: ignore[return-value]
+
+    def close(self) -> None:
+        """
+        Stop producer and try to release consumer/producer promptly.
+        Safe to call multiple times.
+        """
+        if self._closed and self._stop.is_set():
+            return
+
+        self._stop.set()
+
+        # Try to nudge consumer(s) and allow worker to exit quickly.
+        try:
+            self._q.put_nowait(self._SENTINEL)
+        except queue.Full:
+            pass
+
+        self._closed = True
+
+    def __enter__(self) -> "PrefetchIterator[T]":
+        self._ensure_started()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+# --- Example usage ---
+if __name__ == "__main__":
+    import time
+
+    def slow_numbers(n: int) -> Iterator[int]:
+        for i in range(n):
+            time.sleep(0.05)  # simulate slow production
+            yield i
+
+    for x in PrefetchIterator(slow_numbers(10), max_prefetch=3):
+        # consumer can do work; production overlaps
+        time.sleep(0.03)
+        print(x)

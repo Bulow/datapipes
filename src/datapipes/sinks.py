@@ -7,7 +7,8 @@ from datapipes.sic import sic
 from tqdm import tqdm
 from typing import Optional, Tuple, Generator, Iterator
 import inspect
-
+from functools import partial
+from typing import Literal, Callable, Iterable, Iterator, Any, Optional
 
 
 PRIMITIVES = (int, float, bool, str, type(None))
@@ -43,52 +44,52 @@ def get_caller_signature():
     code = frame.f_code
     func_name = code.co_name
 
-    args, varargs, varkw, locals_ = inspect.getargvalues(frame)
-    parts = []
+    # args, varargs, varkw, locals_ = inspect.getargvalues(frame)
+    # parts = []
 
-    # Positional args
-    for name in args:
-        parts.append(safe_repr(locals_[name]))
+    # # Positional args
+    # for name in args:
+    #     parts.append(safe_repr(locals_[name]))
 
-    # *args
-    if varargs:
-        for value in locals_[varargs]:
-            parts.append(safe_repr(value))
+    # # *args
+    # if varargs:
+    #     for value in locals_[varargs]:
+    #         parts.append(safe_repr(value))
 
-    # **kwargs
-    if varkw:
-        for key, value in locals_[varkw].items():
-            parts.append(f"{key}={safe_repr(value)}")
+    # # **kwargs
+    # if varkw:
+    #     for key, value in locals_[varkw].items():
+    #         parts.append(f"{key}={safe_repr(value)}")
 
     # return f"{func_name}({', '.join(parts)})"
     return f"{func_name}"
 
-def subbatch_emit_indices(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=False, pb_description: Optional[str]=None) -> Iterator[Tuple[torch.Tensor, slice]]:
+def subbatch_emit_indices(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, Optional[int], str], Iterator] = partial(tqdm, leave=False), pb_description: Optional[str]=None) -> Iterator[Tuple[torch.Tensor, slice]]:
     start = idx.start if idx.start is not None else 0
     stop = idx.stop if idx.stop is not None else len(dp)
 
-    if progressbar and pb_description is None:
+    if progress_bar and pb_description is None:
         # caller_frame = inspect.currentframe().f_back
         # caller_name = caller_frame.f_code.co_name
         pb_description = get_caller_signature()
 
-    pb = (lambda it: tqdm(it, leave=False, desc=pb_description)) if progressbar else (lambda it: it)
+    pb = (lambda it: progress_bar(it, desc=pb_description)) if progress_bar else (lambda it: it)
     for i in pb(range(start, stop, batch_size)):
         batch_stop = min(i + batch_size, stop)
         yield dp[i:batch_stop], slice(i, batch_stop)
 
-def subbatch(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=False, pb_description: Optional[str]=None) -> Iterator[torch.Tensor]:
-    if progressbar and pb_description is None:
+def subbatch(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm, pb_description: Optional[str]=None) -> Iterator[torch.Tensor]:
+    if progress_bar and pb_description is None:
         # caller_frame = inspect.currentframe().f_back
         # caller_name = caller_frame.f_code.co_name
         pb_description = get_caller_signature()
     
-    for batch, _ in subbatch_emit_indices(dp=dp, idx=idx, batch_size=batch_size, progressbar=progressbar, pb_description=pb_description):
+    for batch, _ in subbatch_emit_indices(dp=dp, idx=idx, batch_size=batch_size, progress_bar=progress_bar, pb_description=pb_description):
         yield batch
 
-def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progressbar=True, destination_device="cpu") -> torch.Tensor:
+def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, Optional[int], str], Iterator] = partial(tqdm, leave=False), destination_device="cpu") -> torch.Tensor:
     batches = [] # TODO: Write directly to an empty tensor to avoid cat
-    for batch in subbatch(dp=dp, idx=idx, batch_size=batch_size, progressbar=progressbar):
+    for batch in subbatch(dp=dp, idx=idx, batch_size=batch_size, progress_bar=progress_bar):
         batches.append(batch.to("cpu", non_blocking=True))
     return torch.cat(batches, axis=0)
 

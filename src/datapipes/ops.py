@@ -33,23 +33,23 @@ class Ops:
     
     @staticmethod
     def bytes_to_float01_gpu(frames: torch.ByteTensor) -> torch.FloatTensor:
-        return frames.to("cuda", dtype=torch.float32) / 255.0
+        return frames.to("cuda", dtype=torch.float32, non_blocking=True) / 255.0
     
     @staticmethod
     def float01_to_bytes_cpu(frames: torch.FloatTensor) -> torch.ByteTensor:
-        return (frames * 255.0).to("cpu", dtype=torch.uint8)
+        return (frames * 255.0).to("cpu", dtype=torch.uint8, non_blocking=True)
 
     @staticmethod
     def numpy(frames: torch.Tensor) -> np.ndarray:
-        return frames.cpu().numpy()
+        return frames.to("cpu", non_blocking=True).numpy()
     
     @staticmethod
     def cpu(frames: torch.Tensor) -> torch.Tensor:
-        return frames.cpu()
+        return frames.to("cpu", non_blocking=True)
     
     @staticmethod
     def gpu(frames: torch.Tensor) -> torch.Tensor:
-        return frames.to("cuda")
+        return frames.to("cuda", non_blocking=True)
     
     @staticmethod
     def pytorch(frames: np.ndarray) -> torch.Tensor:
