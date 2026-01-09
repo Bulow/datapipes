@@ -100,7 +100,9 @@ class Ops:
             frames = einops.rearrange(frames, "h w -> w h")
         else:
             raise ValueError(f"Shape must be one of [(n 1 h w), (1 h w), (n h w), (h w)], got {frames.shape}")
-        return frames
+        
+        fortran_frames: np.ndarray = np.asfortranarray(frames)
+        return fortran_frames
     
     @staticmethod
     def matlab_to_py(frames: np.ndarray) -> torch.Tensor:

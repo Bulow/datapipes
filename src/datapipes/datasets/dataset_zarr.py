@@ -55,6 +55,10 @@ class DatasetZarr(DatasetSource):
     def shape(self):
         return self.length, *self.frames.shape[1:]
     
+    @property
+    def path(self) -> Path:
+        return self._path
+    
     def close(self):
         self.store.close()
 

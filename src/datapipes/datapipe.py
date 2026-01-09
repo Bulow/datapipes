@@ -2,8 +2,6 @@
 import typing
 from typing import Tuple, Callable, List, Any, Optional
 from datapipes.datasets.dataset_source import DatasetSource
-# from tqdm import tqdm
-# from datapipes.utils.forced_tty_mode_tqdm import tty_tqdm
 from tqdm import tqdm
 import math
 import torch
@@ -51,7 +49,7 @@ class DataPipe(DatasetSource):
     
     @property
     def path(self) -> Path:
-        return Path(self._dataset._path)
+        return Path(self._dataset.path)
     
     @property
     def shape(self) -> torch.Tensor:

@@ -4,13 +4,13 @@ Plot tensors
 
 from datapipes.utils import introspection
 from datapipes.utils.slicer import Slicer
-from datapipes.utils.forced_tty_mode_tqdm import tty_tqdm
 from datapipes.utils import cache_results
 from datapipes.utils import import_resource
 # from datapipes.utils import noise
-
+from datapipes.utils.simpletqdm import SimpleTqdm
 import logging
 import traceback
+import builtins
 
 _logging_enabled: bool = False
 
@@ -60,4 +60,13 @@ def print_gpu_info():
     else:
         print("CUDA is not available - PyTorch will use CPU")
 
-__all__ = ["introspection", "Slicer", "tty_tqdm", "cache_results", "enable_jupyter_autoreload", "print_gpu_info", "import_resource"]
+def set_running_under_matlab():
+    setattr(builtins, "__RUNNING_UNDER_MATLAB__", True)
+
+def running_under_matlab() -> bool:
+    try:
+        return bool(getattr(builtins, "__RUNNING_UNDER_MATLAB__", False))
+    except Exception:
+        return False
+
+__all__ = ["introspection", "Slicer", "cache_results", "enable_jupyter_autoreload", "print_gpu_info", "import_resource", "running_under_matlab", "SimpleTqdm"]

@@ -45,7 +45,7 @@ def list_files_in_folder(folder: str) -> List[str]:
     # Keep it simple: list only files directly under the folder.
     return [str(x) for x in sorted(p.iterdir()) if x.is_file()]
 
-def folder_picker(default_folder: Path=Path(os.getcwd()), label: str="Pick folder") -> Tuple[gr.Textbox, gr.HTML]:
+def folder_picker(default_folder: Path=Path(os.getcwd()), label: str="Pick folder", add_drive_stats_bar: bool=True) -> Tuple[gr.Textbox, gr.HTML]:
     with gr.Row():
         with gr.Column():
             # with gr.Column():
@@ -57,7 +57,9 @@ def folder_picker(default_folder: Path=Path(os.getcwd()), label: str="Pick folde
                 min_width=400,
             )
             pick_input_btn = gr.Button("Browse…", size="sm")
-            drive_stats = gr.HTML(drive_stats_bar(default_folder))
+
+            if add_drive_stats_bar:
+                drive_stats = gr.HTML(drive_stats_bar(default_folder))
     
         pick_input_btn.click(
             fn=lambda current: pick_folder(current),
@@ -65,7 +67,7 @@ def folder_picker(default_folder: Path=Path(os.getcwd()), label: str="Pick folde
             outputs=folder,
         )
 
-        return folder, drive_stats
+        return folder, drive_stats if add_drive_stats_bar else folder
 
 def connect_drive_stats_bar(folder: gr.Textbox, drive_stats: gr.HTML, file_explorer: Optional[gr.FileExplorer]=None, ignore_selection_if_path_on_same_device_as: Optional[gr.Textbox]=None, selection_size_action: Literal["add_selection_size", "remove_selection_size"]="add_selection_size"):
     if ignore_selection_if_path_on_same_device_as is not None:

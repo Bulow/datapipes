@@ -1,13 +1,14 @@
+import sys
 import argparse
 from typing import Optional
 from pathlib import Path
 from datapipes.tools import dataset_wrangler
-from datapipes.tools.dataset_wrangler_cli import main as wrangler
+from datapipes.tools.dataset_wrangler_cli import main as dataset_wrangler
 from datapipes.utils import import_resource
 import subprocess
 
 def init(argv: Optional[list[str]] = None) -> int:
-    if len(argv) > 0:
+    if argv is not None and len(argv) > 0:
         raise SyntaxError("init takes no arguments.")
     destination = Path.cwd()
     if (destination / "pyproject.toml").exists():
@@ -19,18 +20,29 @@ def init(argv: Optional[list[str]] = None) -> int:
 
     subprocess.run(str(install_script), shell=True, check=True)
 
+def print_help(argv: Optional[list[str]] = None) -> int:
+    print(f"Available commands:")
+    for t in tools.keys():
+        print(f"\t{t}", end="\n")
+
 tools = {
-    "wrangler": wrangler,
+    "help": print_help,
     "init": init,
+    "dataset-wrangler": dataset_wrangler,
 }
 
 def main(argv: Optional[list[str]] = None) -> int:
-    if len(argv) < 1:
-        print("Usage: datapipes tool_name [args...]")
-        return 1
+    if argv is None:
+        argv = sys.argv[1:]
+    # if argv is None or len(argv) < 1:
+    #     print("Usage: datapipes tool_name [args...]")
+    #     return 1
+    print(f"{argv = }")
 
     func_name = argv[0]
     args = argv[1:]
+
+    print(f"{func_name = }, {(*args, ) = }")
 
     if func_name not in tools:
         print(f"Unknown tool: {func_name}")
@@ -38,7 +50,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     try:
-        tools[func_name](*args)
+        tools[func_name](args)
     except TypeError as e:
         print(f"Argument error: {e}")
         return 1

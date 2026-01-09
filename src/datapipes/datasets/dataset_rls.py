@@ -24,7 +24,7 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
         return self.rls_file_reader.total_frame_count
     
     @property
-    def _path(self) -> Path:
+    def path(self) -> Path:
         return self.rls_file_reader.path
     
     @property

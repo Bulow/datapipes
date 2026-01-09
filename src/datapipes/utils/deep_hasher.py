@@ -55,7 +55,7 @@ class DeepHasher:
     @staticmethod
     def from_datapipe(datapipe: DataPipe) -> "DeepHasher":
         if hasattr(datapipe._dataset, "path"):
-            origin_path = datapipe._dataset._path
+            origin_path = datapipe._dataset.path
         else:
             origin_path = type(datapipe._dataset)
         dh = DeepHasher(shape=datapipe.shape, dtype=datapipe[0].dtype, origin_path=origin_path)

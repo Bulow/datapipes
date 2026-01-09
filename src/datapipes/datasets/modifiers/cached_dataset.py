@@ -57,8 +57,8 @@ class CachedDataset(datasets.DatasetSource):
         return self._underlying_dataset.timestamps
     
     @property
-    def _path(self) -> Path:
-        return Path(self._underlying_dataset._path)
+    def path(self) -> Path:
+        return Path(self._underlying_dataset.path)
     
     @property
     def shape(self) -> torch.Size:

@@ -89,8 +89,8 @@ class CompressedCachedDataset(datasets.DatasetSource):
         return self.remote_compressed_ds.timestamps
     
     @property
-    def _path(self) -> Path:
-        return Path(self.remote_compressed_ds._path)
+    def path(self) -> Path:
+        return Path(self.remote_compressed_ds.path)
 
     @property
     def shape(self) -> torch.Size:

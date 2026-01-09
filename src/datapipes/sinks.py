@@ -4,15 +4,24 @@ import torch
 from pathlib import Path
 import numpy as np
 from datapipes.sic import sic
-from tqdm import tqdm
 from typing import Optional, Tuple, Generator, Iterator
 import inspect
 from functools import partial
 from typing import Literal, Callable, Iterable, Iterator, Any, Optional
+import datapipes
+from tqdm import tqdm
+from datapipes.utils import SimpleTqdm
 
+def get_progress_bar() -> Callable:
+    if datapipes.utils.running_under_matlab():
+        return SimpleTqdm
+    else:
+        return tqdm
 
 PRIMITIVES = (int, float, bool, str, type(None))
 
+# def get_default_progress_bar() -> Callable:
+#     if 
 
 def safe_repr(value):
     # Primitives → print literal
@@ -73,7 +82,7 @@ def subbatch_emit_indices(dp: DataPipe, idx: slice, batch_size: int=256, progres
         # caller_name = caller_frame.f_code.co_name
         pb_description = get_caller_signature()
 
-    pb = (lambda it: progress_bar(it, desc=pb_description)) if progress_bar else (lambda it: it)
+    pb = (lambda it: get_progress_bar()(it, desc=pb_description)) if progress_bar else (lambda it: it)
     for i in pb(range(start, stop, batch_size)):
         batch_stop = min(i + batch_size, stop)
         yield dp[i:batch_stop], slice(i, batch_stop)
@@ -103,7 +112,7 @@ def sum(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.
 def mean(frames: DataPipe, idx: slice=slice(None), batch_size: int=512) -> torch.Tensor:
     total_sum = torch.zeros_like(frames[0]).to("cuda", torch.float32)
 
-    for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progressbar=True):
+    for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progress_bar=True):
         total_sum += batch.sum(0)
     total_sum /= len(frames)
     return total_sum

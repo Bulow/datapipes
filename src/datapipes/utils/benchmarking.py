@@ -1,5 +1,12 @@
+import torch
+import numpy as np
 from datapipes import datasets
+from datapipes.datapipe import DataPipe
 import time
+import sys
+from collections import deque
+import warnings
+import rich
 
 class MultiBlockTimer:
     def __init__(self):
@@ -48,3 +55,87 @@ def raw_frame_throughput(time_elapsed: float, ds: datasets.DatasetSource):
     total_bytes = n * c * h * w
     bytes_per_second = round(total_bytes / time_elapsed)
     print(f"Raw frame throughput = {human_readable_filesize(bytes_per_second)}/s")
+
+def get_logical_size(datapipe: DataPipe) -> int:
+    first_frame: torch.Tensor = datapipe[0]
+    total_logical_bytes = first_frame.numel() * first_frame.element_size() * len(datapipe)
+    return total_logical_bytes
+
+def get_disk_size(datapipe: DataPipe) -> int:
+    return datapipe.path.stat().st_size
+
+def _get_tensor_size_bytes(tensor: torch.Tensor) -> int:
+    total_bytes = tensor.numel() * tensor.element_size()
+    return total_bytes
+
+def _get_ndarray_size_bytes(array: np.ndarray) -> int:
+    total_bytes = array.size * array.itemsize
+    return total_bytes
+
+# def get_physical_size(datapipe: DataPipe) -> str:
+
+
+
+def get_memory_size(datapipe: DataPipe) -> int:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*torch.distributed.reduce_op.*",
+            category=FutureWarning,
+        )
+        return _get_memory_size(datapipe)
+
+def _get_memory_size(obj, seen=None):
+    """
+    Recursively computes the approximate memory footprint of a Python object.
+
+    Parameters:
+        obj: any Python object
+        seen: set of object ids already counted (used internally)
+
+    Returns:
+        int: approximate size in bytes
+    """
+    if seen is None:
+        seen = set()
+
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+
+    # Handle containers
+    if isinstance(obj, dict):
+        size += sum(
+            _get_memory_size(k, seen) + _get_memory_size(v, seen)
+            for k, v in obj.items() if not (isinstance(k, str) and k.startswith("__"))
+        )
+    elif isinstance(obj, torch.Tensor):
+        size += _get_tensor_size_bytes(obj)
+    elif isinstance(obj, np.ndarray):
+        size += _get_ndarray_size_bytes(obj)
+    elif isinstance(obj, (list, tuple, set, frozenset, deque)):
+        size += sum(_get_memory_size(i, seen) for i in obj)
+    elif hasattr(obj, "__dict__"):
+        size += _get_memory_size(obj.__dict__, seen)
+
+    return size
+
+
+def print_memory_stats(datapipe: DataPipe):
+    disk_size = human_readable_filesize(get_disk_size(datapipe))
+    ram_size = human_readable_filesize(get_memory_size(datapipe))
+    logical_size = human_readable_filesize(get_logical_size(datapipe))
+
+    # print(f"{disk_size = }, {ram_size = }, {logical_size = }")
+    print(f"""
+Memory stats:
+    Disk size: {disk_size}
+    RAM size: {ram_size}
+    Logical size: {logical_size}
+    -
+    shape: {datapipe.shape}
+    dtype: {str(datapipe[0].dtype)}
+""")

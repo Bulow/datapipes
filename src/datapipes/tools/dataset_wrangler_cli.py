@@ -5,6 +5,8 @@ from datapipes.tools import dataset_wrangler
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    print(f"{__name__}: {argv = }")
+
     parser = argparse.ArgumentParser(
         prog="DatasetWrangler",
         description="Compress, and safely move datasets",
@@ -22,7 +24,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Default output folder (optional).",
     )
 
-    args = parser.parse_args(argv)
+
+    args = parser.parse_args(argv or [])
+    
 
     dataset_wrangler(
         default_input_dir=args.default_input_dir,
