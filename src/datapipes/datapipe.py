@@ -134,7 +134,7 @@ class DataPipe(DatasetSource):
                     futures.append(executor.submit(self.get_item_multithreaded, slice(i, frame_count), output_dtype=output_dtype, then=then))
                 else:
                     futures.append(executor.submit(self.get_item_multithreaded, slice(i, i + batch_size), output_dtype=output_dtype, then=then))
-            with tty_tqdm(total=frame_count, desc="Processing frames in concurrent batches", unit="frames") as pbar:
+            with tqdm(total=frame_count, desc="Processing frames in concurrent batches", unit="frames") as pbar:
                 for future in as_completed(futures):
                     batch = future.result()
 
