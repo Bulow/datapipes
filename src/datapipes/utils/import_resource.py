@@ -2,6 +2,7 @@ from importlib.resources import files, as_file
 import torch
 from pathlib import Path
 import zipfile
+from contextlib import contextmanager
 
 _resources_root: str = "datapipes.utils.resources"
 
@@ -31,4 +32,11 @@ def extract_file(resource_relative_path: str, destination: Path):
         
         with zipfile.ZipFile(payload_zip, 'r') as zip_ref:
             zip_ref.extractall(destination)
+
+@contextmanager
+def as_path(resource_relative_path: str):
+    resource = files(_resources_root).joinpath(resource_relative_path)
+    with as_file(resource) as resource_path:
+        yield resource_path
+
 

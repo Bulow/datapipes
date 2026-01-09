@@ -109,7 +109,7 @@ def get_mask_op(n_frames_per_mask: int=256):
     return with_manual_op(get_hand_mask, Slicer[::n_frames_per_mask, :, :, :])
 
 def segment_datapipe(dp: DataPipe, idx: slice=slice(None), n_frames_per_mask: int=256) -> torch.Tensor:
-    return sinks.accumulate(dp | get_mask_op(n_frames_per_mask=n_frames_per_mask), idx, batch_size=1, progressbar=True)
+    return sinks.accumulate(dp | get_mask_op(n_frames_per_mask=n_frames_per_mask), idx, batch_size=1, progress_bar=True)
 
 def render_pretty_mask(image: torch.Tensor, mask: torch.Tensor, cmap: Optional[str]="viridis", mask_color_rgb01: Optional[Tuple[float]]=(0.7, 0.1, 0.3)) -> torch.Tensor:
     image = plots.qtile(image, quantile=(0.05, 0.95))

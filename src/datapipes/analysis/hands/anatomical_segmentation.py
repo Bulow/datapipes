@@ -241,7 +241,7 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: 
     return out
 
 # , hand_name: Literal["Right", "Left"]
-def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True) -> torch.Tensor:
+def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True) -> Tuple[torch.Tensor, Dict[str, int], Dict[Literal["left", "right"], torch.Tensor]]:
     mask = hand_segmentation.get_hand_mask(img_data)
     gradient = _prepare_gradients(img_data.std(0), mask)
     raw_landmarks_mediapipe_fmt = hand_landmarks.detect_landmarks(img_data=img_data.mean(0))
@@ -254,7 +254,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
     # Crop to bbox of chosen hand
     # chosen_segments = hands_segments_px[hand_name]
     bboxes = {}
-    anatomy_maps = []
+    anatomy_maps = {}
     out_seg_mask = torch.zeros_like(mask)
     for hand_name, chosen_segments in hands_segments_px.items():
         H, W = img_data.shape[-2:]
@@ -295,7 +295,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, segments=relative_segments, use_surface_optimization=use_surface_optimization)
         # print(anatomy.shape)
         out_seg_mask[:, min_h:max_h, min_w:max_w] = anatomy
-        anatomy_maps.append(anatomy)
+        anatomy_maps[hand_name] = anatomy
     return out_seg_mask, bboxes, anatomy_maps
 
 def compute_anatomical_markers(image: torch.Tensor, mode: Literal["single_flat_dict", "dict_per_hand"]="dict_per_hand") -> Dict[str, torch.Tensor]|Dict[str, Dict[str, torch.Tensor]]:

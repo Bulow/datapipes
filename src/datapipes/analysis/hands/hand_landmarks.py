@@ -5,7 +5,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import numpy as np
 from datapipes.plotting.torch_colormap import TorchColormap
-
+from datapipes.utils import import_resource
 import torch
 from datapipes.ops import Ops
 import einops
@@ -21,11 +21,12 @@ def torch_float_1hw_to_np_uint8_hw3(frame: torch.Tensor) -> torch.Tensor:
     return frame
 
 def create_detector(num_hands: int=2):
-    base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-    options = vision.HandLandmarkerOptions(base_options=base_options,
-                                        num_hands=num_hands)
-    detector = vision.HandLandmarker.create_from_options(options)
-    return detector
+    with import_resource.as_path("hand_landmarker.task") as model_path:
+        base_options = python.BaseOptions(model_asset_path=str(model_path.as_posix()))
+        options = vision.HandLandmarkerOptions(base_options=base_options,
+                                            num_hands=num_hands)
+        detector = vision.HandLandmarker.create_from_options(options)
+        return detector
 
 detector = create_detector(num_hands=2)
 

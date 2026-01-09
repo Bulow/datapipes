@@ -23,7 +23,6 @@ class FutureSlice:
     index: slice
     data: np.ndarray|torch.Tensor
 
-
 class DataPipe(DatasetSource):
 
     def __init__(self, dataset: "DatasetSource|DataPipe", segments: Tuple=(), requires_grad: bool=False):
@@ -49,6 +48,7 @@ class DataPipe(DatasetSource):
     
     @property
     def path(self) -> Path:
+        return Path(self._dataset.path)
         return Path(self._dataset.path)
     
     @property
