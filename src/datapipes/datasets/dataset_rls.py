@@ -14,6 +14,15 @@ import mmap
 import warnings
 from collections.abc import Sequence
 import einops
+import warnings
+
+
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message=".*The given buffer is not writable, and PyTorch does not support non-writable tensors.*",
+        category=UserWarning,
+    )
 
 
 class DatasetRLS(DatasetSource, DatasetWithMetadata):
@@ -33,6 +42,9 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
     
     def __getitem__(self, index) -> torch.Tensor:
         return self.rls_file_reader[index]
+    
+    def __setitem__(self, index, value) -> None:
+        raise NotImplementedError(f"Datasets are read-only")
     
     @property
     def timestamps(self):

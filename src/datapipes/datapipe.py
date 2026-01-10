@@ -89,14 +89,14 @@ class DataPipe(DatasetSource):
             return data
 
 
-    def then(self, func): #, time_window: int=1):
+    def then(self, func: Callable[[torch.Tensor], torch.Tensor]) -> "DataPipe":
         if not callable(func):
             raise ValueError("func must be callable, got", type(func))
 
         new_segments = (*self.segments, func)
         return DataPipe(self._dataset, new_segments)
 
-    def __or__(self, func):
+    def __or__(self, func: Callable[[torch.Tensor], torch.Tensor]) -> "DataPipe":
         return self.then(func)
     
 

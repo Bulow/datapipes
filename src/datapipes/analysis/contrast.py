@@ -190,3 +190,7 @@ def cumulative_spatial_contrast(frames: torch.Tensor) -> torch.Tensor:
     csum = torch.cumsum(frames, dim=0)  / torch.arange(start=1, end=frames.shape[0] + 1, step=1, device=frames.device)
     c_contrast = spatial_contrast_total_frame(csum)
     return c_contrast
+
+
+def bfi(frames: torch.Tensor) -> torch.Tensor:
+    return 1.0 / (frames ** 2)

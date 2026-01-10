@@ -90,7 +90,11 @@ class Ops:
     def py_to_matlab(frames: torch.Tensor|np.ndarray) -> np.ndarray:
         if isinstance(frames, torch.Tensor):
             frames = frames.cpu().numpy()
-        if (frames.ndim == 4):
+        
+        if frames.ndim > 4:
+            raise ValueError(f"Shape must be one of [(n 1 h w), (1 h w), (n h w), (h w)], got {frames.shape}")
+        
+        if frames.ndim == 4:
             frames = einops.rearrange(frames, "n 1 h w -> w h n")
         elif (frames.ndim == 3 and frames.shape[0] == 1):
             frames = einops.rearrange(frames, "1 h w -> w h")
@@ -98,8 +102,7 @@ class Ops:
             frames = einops.rearrange(frames, "n h w -> w h n")
         elif (frames.ndim == 2):
             frames = einops.rearrange(frames, "h w -> w h")
-        else:
-            raise ValueError(f"Shape must be one of [(n 1 h w), (1 h w), (n h w), (h w)], got {frames.shape}")
+        
         
         fortran_frames: np.ndarray = np.asfortranarray(frames)
         return fortran_frames

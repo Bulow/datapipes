@@ -10,22 +10,22 @@ from pathlib import Path
 
 class DatasetSource(Dataset):
     def __len__(self) -> int:
-        ...
+        raise NotImplementedError()
 
     def __getitem__(self, index: int|slice|Tuple) -> torch.Tensor:
-        ...
+        raise NotImplementedError()
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        ...
+        raise NotImplementedError()
 
     @property
     def timestamps(self) -> torch.LongTensor:
-        ...
+        raise NotImplementedError()
     
     @property
     def path(self) -> Path:
-        ...
+        raise NotImplementedError()
     
 
     def as_pytorch_dataloader(self, batch_size: int=128, shuffle: bool=True) -> DataLoader:
@@ -33,15 +33,15 @@ class DatasetSource(Dataset):
 
 class DatasetWithMetadata(Protocol):
     def get_metadata(self) -> dict:
-        ...
+        raise NotImplementedError()
     
     @property
     def frame_index_in_recording(self) -> Sequence:
-        ...
+        raise NotImplementedError()
     
     @property
     def timestamps(self) -> Sequence:
-        ...
+        raise NotImplementedError()
         
     
 

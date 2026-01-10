@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 import threading
 import torch
 
@@ -6,6 +6,10 @@ from datapipes import datasets
 from datapipes.datasets.utils.compressed_image_stream_tensor import CompressedImageStreamTensor
 import h5py
 import time
+
+
+from datapipes.utils.benchmarking import human_readable_filesize, get_disk_size
+
 from pathlib import Path
 
 Index = Any
@@ -20,19 +24,21 @@ class CompressedCachedDataset(datasets.DatasetSource):
     """
     def __init__(
         self,
-        remote_compressed_ds: datasets.DatasetCompressedImageStreamHdf5,
+        underlying_compressed_ds: datasets.DatasetCompressedImageStreamHdf5,
         prefetch_batchsize: int = 512,
         device: torch.device | str = "cpu",
         daemon: bool = True,
-        pin_memory: bool=False,
+        pin_memory: bool=True,
     ) -> None:
-        self.remote_compressed_ds = remote_compressed_ds
+        self._underlying_dataset = underlying_compressed_ds
         # self._path = self.remote_compressed_ds.path
-        self.remote_compressed_frames: h5py.Dataset = self.remote_compressed_ds.frames
-        self.lengths: torch.Tensor = self.remote_compressed_ds.lengths[:].to(torch.int64)
-        self.offsets: torch.Tensor = self.remote_compressed_ds.offsets[:].to(torch.int64)
 
-        self._shape = torch.Size(remote_compressed_ds.shape)
+        self._tensors_allocated: bool = False
+        self.remote_compressed_frames: h5py.Dataset = self._underlying_dataset.frames
+        self.lengths: torch.Tensor = self._underlying_dataset.lengths[:].to(torch.int64)
+        self.offsets: torch.Tensor = self._underlying_dataset.offsets[:].to(torch.int64)
+
+        self._shape = torch.Size(underlying_compressed_ds.shape)
         if len(self._shape) != 4:
             raise ValueError(f"Expected shape (n, c, h, w), got {tuple(self._shape)}")
 
@@ -44,16 +50,9 @@ class CompressedCachedDataset(datasets.DatasetSource):
 
         n, c, h, w = self._shape
 
-        # Full cache allocation (RAM / chosen device)
-        self._cache = torch.empty(self.remote_compressed_frames.shape, dtype=self._dtype, device=self._device, pin_memory=pin_memory)
-        # self._cache = np.empty(shape=remote_compressed_ds.shape, dtype=np.uint8)
-
-        self.lazy_decoding_tensor: CompressedImageStreamTensor = CompressedImageStreamTensor(
-            frames=self._cache,
-            lengths=self.lengths,
-            offsets=self.offsets,
-            individual_frame_shape=self.shape[0:]
-        )
+        self._pin_memory= pin_memory
+        self._cache: torch.Tensor
+        self.lazy_decoding_tensor: CompressedImageStreamTensor
 
         # Validity tracked per frame (dim 0). Keep on CPU for cheap synchronization.
         self._valid = torch.zeros(n, dtype=torch.bool, device="cpu")
@@ -86,11 +85,11 @@ class CompressedCachedDataset(datasets.DatasetSource):
     
     @property
     def timestamps(self) -> torch.LongTensor:
-        return self.remote_compressed_ds.timestamps
+        return self._underlying_dataset.timestamps
     
     @property
     def path(self) -> Path:
-        return Path(self.remote_compressed_ds.path)
+        return Path(self._underlying_dataset.path)
 
     @property
     def shape(self) -> torch.Size:
@@ -123,12 +122,29 @@ class CompressedCachedDataset(datasets.DatasetSource):
             start_time = time.perf_counter()
             n = self._shape[0]
             print(f"Prefetching {n} compressed frames ({human_readable_filesize(len(self._cache))})")
+
+            # Allocate cache tensor:
+            # Full cache allocation (RAM / chosen device)
+            self._cache = torch.empty(self.remote_compressed_frames.shape, dtype=self._dtype, device=self._device, pin_memory=self._pin_memory)
+
+            self.lazy_decoding_tensor: CompressedImageStreamTensor = CompressedImageStreamTensor(
+                frames=self._cache,
+                lengths=self.lengths,
+                offsets=self.offsets,
+                individual_frame_shape=self.shape[0:]
+            )
+
+            with self._cv:
+                self._tensors_allocated = True
+
             while not self._stop.is_set():
                 with self._cv:
                     start = self._prefetch_pos
                     if start >= n:
-                        stop_time = time.perf_counter()
-                        print(f"Finished prefetching {n} frames in {stop_time - start_time:.2f}s")
+                        stop_time: float = time.perf_counter()
+                        prefetch_time: float = stop_time - start_time
+                        ds_size: int = get_disk_size(self._underlying_dataset)
+                        print(f"Finished prefetching {n} frames ({human_readable_filesize(ds_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(ds_size / prefetch_time))}/s")
                         self._cv.notify_all()
                         return
                     end = min(n, start + self._batch)
@@ -176,27 +192,27 @@ class CompressedCachedDataset(datasets.DatasetSource):
                 self._raise_if_error()
                 if self._stop.is_set():
                     raise RuntimeError("CachedTensor is closed/stopped while waiting for data.")
-                if bool(self._valid[start:stop].all()):
+                if self._tensors_allocated and bool(self._valid[start:stop].all()):
                     return
                 self._cv.wait(timeout=0.1)
 
-    def __getitem__(self, idx: Index) -> torch.Tensor:
+    def __getitem__(self, index: int|slice|Tuple) -> torch.Tensor:
         # Accept idx as slice or tuple whose first element is a slice
-        if isinstance(idx, tuple):
-            if len(idx) == 0 or not isinstance(idx[0], slice):
+        if isinstance(index, tuple):
+            if len(index) == 0 or not isinstance(index[0], slice):
                 raise TypeError("First index must be a slice along dim 0, e.g. ct[a:b, ...].")
-            dim0_slice = idx[0]
-        elif isinstance(idx, slice):
-            dim0_slice = idx
-        elif isinstance(idx, int):
-            dim0_slice = slice(idx, idx + 1)
+            dim0_slice = index[0]
+        elif isinstance(index, slice):
+            dim0_slice = index
+        elif isinstance(index, int):
+            dim0_slice = slice(index, index + 1)
         else:
             raise TypeError("Index must be a slice along dim 0, e.g. ct[a:b] or ct[a:b, ...].")
 
         start, stop = self._normalize_slice_dim0(dim0_slice)
         self._wait_until_valid_range(start, stop)
 
-        return self.lazy_decoding_tensor[idx]
+        return self.lazy_decoding_tensor[index]
     
     
 

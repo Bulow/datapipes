@@ -1,3 +1,4 @@
+from datapipes.datasets import DatasetSource
 import torch
 import numpy as np
 from datapipes import datasets
@@ -56,12 +57,12 @@ def raw_frame_throughput(time_elapsed: float, ds: datasets.DatasetSource):
     bytes_per_second = round(total_bytes / time_elapsed)
     print(f"Raw frame throughput = {human_readable_filesize(bytes_per_second)}/s")
 
-def get_logical_size(datapipe: DataPipe) -> int:
+def get_logical_size(datapipe: DataPipe|DatasetSource) -> int:
     first_frame: torch.Tensor = datapipe[0]
     total_logical_bytes = first_frame.numel() * first_frame.element_size() * len(datapipe)
     return total_logical_bytes
 
-def get_disk_size(datapipe: DataPipe) -> int:
+def get_disk_size(datapipe: DataPipe|DatasetSource) -> int:
     return datapipe.path.stat().st_size
 
 def _get_tensor_size_bytes(tensor: torch.Tensor) -> int:
@@ -76,7 +77,7 @@ def _get_ndarray_size_bytes(array: np.ndarray) -> int:
 
 
 
-def get_memory_size(datapipe: DataPipe) -> int:
+def get_memory_size(datapipe: DataPipe|DatasetSource) -> int:
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
@@ -138,4 +139,5 @@ Memory stats:
     -
     shape: {datapipe.shape}
     dtype: {str(datapipe[0].dtype)}
+    device: {datapipe[0].dtype}
 """)

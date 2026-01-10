@@ -1,8 +1,13 @@
-from typing import Any, Optional
+from datapipes.datasets import DatasetSource
+from typing import Any, Optional, Tuple
 import threading
 import torch
 from pathlib import Path
 from datapipes import datasets
+import time
+
+
+from datapipes.utils.benchmarking import human_readable_filesize, get_disk_size, get_logical_size
 
 Index = Any
 
@@ -20,27 +25,30 @@ class CachedDataset(datasets.DatasetSource):
         underlying_dataset: datasets.DatasetSource,
         prefetch_batchsize: int = 256,
         device: torch.device | str = "cpu",
+        pin_memory: bool = True,
         daemon: bool = True,
     ) -> None:
-        self._underlying_dataset = underlying_dataset
+        self._underlying_dataset: DatasetSource = underlying_dataset
         self._shape: torch.Size = torch.Size(self._underlying_dataset.shape)
         if len(self._shape) != 4:
             raise ValueError(f"Expected shape (n, c, h, w), got {tuple(self._shape)}")
 
         self._dtype = self._underlying_dataset[0].dtype
         self._device = torch.device(device)
+        self._pin_memory: bool = pin_memory
         self._fetch_fn = self._underlying_dataset.__getitem__
         self._batch = int(prefetch_batchsize)
         if self._batch <= 0:
             raise ValueError("batch_frames must be > 0")
 
-        n, c, h, w = self._shape
+        self.storage_size = get_logical_size(self._underlying_dataset)
 
-        # Full cache allocation (RAM / chosen device)
-        self._cache = torch.empty((n, c, h, w), dtype=self._dtype, device=self._device)
-
+        
+        self._tensors_allocated: bool = False
+        self._cache: torch.Tensor
+        # self._valid: torch.Tensor
         # Validity tracked per frame (dim 0). Keep on CPU for cheap synchronization.
-        self._valid = torch.zeros(n, dtype=torch.bool, device="cpu")
+        self._valid: torch.Tensor
 
         # Thread coordination
         self._lock = threading.Lock()
@@ -88,13 +96,29 @@ class CachedDataset(datasets.DatasetSource):
 
     def _prefetch_loop(self) -> None:
         try:
-            n = self._shape[0]
-            print(f"Prefetching {n} frames")
+            n, c, h, w = self._shape
+
+            print(f"Prefetching {len(self)} frames ({human_readable_filesize(self.storage_size)}) in the background")
+            start_time = time.perf_counter()
+            
+
+            self._valid = torch.zeros(self.shape[0], dtype=torch.bool, device="cpu", pin_memory=True)
+
+            # Full cache allocation (RAM / chosen device)
+            self._cache = torch.empty((n, c, h, w), dtype=self._dtype, device=self._device, pin_memory=self._pin_memory)
+
+            
+            with self._cv:
+                self._tensors_allocated = True
+
             while not self._stop.is_set():
                 with self._cv:
                     start = self._prefetch_pos
                     if start >= n:
-                        print(f"Finished prefetching {n} frames")
+                        stop_time = time.perf_counter()
+                        prefetch_time: float = stop_time - start_time
+                        
+                        print(f"Finished prefetching {n} frames ({human_readable_filesize(self.storage_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(self.storage_size / prefetch_time))}/s")
                         self._cv.notify_all()
                         return
                     end = min(n, start + self._batch)
@@ -138,30 +162,30 @@ class CachedDataset(datasets.DatasetSource):
                 self._raise_if_error()
                 if self._stop.is_set():
                     raise RuntimeError("CachedTensor is closed/stopped while waiting for data.")
-                if bool(self._valid[start:stop].all()):
+                if self._tensors_allocated and bool(self._valid[start:stop].all()):
                     return
                 self._cv.wait(timeout=0.1)
 
     def block_until_fully_cached(self):
         self._wait_until_valid_range(0, len(self))
 
-    def __getitem__(self, idx: Index) -> torch.Tensor:
+    def __getitem__(self, index: int|slice|Tuple) -> torch.Tensor:
         # Accept idx as slice or tuple whose first element is a slice
-        if isinstance(idx, tuple):
-            if len(idx) == 0 or not isinstance(idx[0], slice):
+        if isinstance(index, tuple):
+            if len(index) == 0 or not isinstance(index[0], slice):
                 raise TypeError("First index must be a slice along dim 0, e.g. ct[a:b, ...].")
-            dim0_slice = idx[0]
-        elif isinstance(idx, slice):
-            dim0_slice = idx
-        elif isinstance(idx, int):
-            dim0_slice = slice(idx, idx + 1)
+            dim0_slice = index[0]
+        elif isinstance(index, slice):
+            dim0_slice = index
+        elif isinstance(index, int):
+            dim0_slice = slice(index, index + 1)
         else:
             raise TypeError("Index must be a slice along dim 0, e.g. ct[a:b] or ct[a:b, ...].")
 
         start, stop = self._normalize_slice_dim0(dim0_slice)
         self._wait_until_valid_range(start, stop)
 
-        return self._cache[idx]
+        return self._cache[index]
 
     def __len__(self) -> int:
         return self._shape[0]
