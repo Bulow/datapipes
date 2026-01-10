@@ -96,7 +96,7 @@ def load_dataset(
                 ds = CachedDataset(underlying_dataset=ds)
                 cached_datasets[path] = ds
                 return ds
-        case "cache_compressed":
+        case "cache_compressed_reuse":
             if path in cached_datasets.keys():
                 print(f"Reusing cached dataset: {path.name}")
                 return cached_datasets[path]
