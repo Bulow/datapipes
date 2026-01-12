@@ -7,14 +7,17 @@ from datapipes.datasets.utils.compressed_image_stream_tensor import CompressedIm
 import h5py
 import time
 
+from tqdm.notebook import tqdm_notebook
 
-from datapipes.utils.benchmarking import human_readable_filesize, get_disk_size
+from datapipes.utils.benchmarking import human_readable_filesize, get_disk_size, get_logical_size
 
 from pathlib import Path
 
 Index = Any
 
 from datapipes.utils.benchmarking import human_readable_filesize
+
+from datapipes.datasets.utils.background_progress_jupyter import ThreadSafeProgress
 
 class CompressedCachedDataset(datasets.DatasetSource):
     """
@@ -32,6 +35,12 @@ class CompressedCachedDataset(datasets.DatasetSource):
     ) -> None:
         self._underlying_dataset = underlying_compressed_ds
         # self._path = self.remote_compressed_ds.path
+
+        self.storage_size: int = get_disk_size(self._underlying_dataset)
+        self.logical_size: int = get_logical_size(self._underlying_dataset)
+
+
+        
 
         self._tensors_allocated: bool = False
         self.remote_compressed_frames: h5py.Dataset = self._underlying_dataset.frames
@@ -56,6 +65,8 @@ class CompressedCachedDataset(datasets.DatasetSource):
 
         # Validity tracked per frame (dim 0). Keep on CPU for cheap synchronization.
         self._valid = torch.zeros(n, dtype=torch.bool, device="cpu")
+
+        self._progress_bar: ThreadSafeProgress = ThreadSafeProgress(total_storage_size = self.storage_size, total_logical_size=self.logical_size, total_type_used_for_stats="storage", desc="Prefetching frames in the background", path=self.path).display()
 
         # Thread coordination
         self._lock = threading.Lock()
@@ -121,7 +132,9 @@ class CompressedCachedDataset(datasets.DatasetSource):
         try:
             start_time = time.perf_counter()
             n = self._shape[0]
-            print(f"Prefetching {n} compressed frames ({human_readable_filesize(len(self._cache))})")
+            # print(f"Prefetching {n} compressed frames ({human_readable_filesize(len(self.remote_compressed_frames))})")
+            self._progress_bar.set_status(f"Allocating memory ({human_readable_filesize(self.storage_size)})")
+            
 
             # Allocate cache tensor:
             # Full cache allocation (RAM / chosen device)
@@ -136,6 +149,8 @@ class CompressedCachedDataset(datasets.DatasetSource):
 
             with self._cv:
                 self._tensors_allocated = True
+            
+            self._progress_bar.set_status("Loading dataset into RAM. The dataset is ready to use.")
 
             while not self._stop.is_set():
                 with self._cv:
@@ -143,8 +158,10 @@ class CompressedCachedDataset(datasets.DatasetSource):
                     if start >= n:
                         stop_time: float = time.perf_counter()
                         prefetch_time: float = stop_time - start_time
-                        ds_size: int = get_disk_size(self._underlying_dataset)
-                        print(f"Finished prefetching {n} frames ({human_readable_filesize(ds_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(ds_size / prefetch_time))}/s")
+                        
+                        # print(f"Finished prefetching {n} frames ({human_readable_filesize(self._ds_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(self._ds_size / prefetch_time))}/s")
+                        self._progress_bar.set_status("Done")
+                        self._progress_bar.close()
                         self._cv.notify_all()
                         return
                     end = min(n, start + self._batch)
@@ -166,11 +183,15 @@ class CompressedCachedDataset(datasets.DatasetSource):
                 with self._cv:
                     self._valid[start:end] = True
                     self._cv.notify_all()
+                time.sleep(0)
+                self._progress_bar.report(n=len(fetched))
 
         except BaseException as e:
             with self._cv:
                 self._error = e
+                self._progress_bar.error(str(e))
                 self._cv.notify_all()
+                raise e
 
     def _normalize_slice_dim0(self, s: slice) -> tuple[int, int]:
         """

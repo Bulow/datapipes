@@ -78,7 +78,7 @@ def laplacian_contrast(frames: torch.Tensor):
 
 
 def spatial_contrast(window_size=7, eps=1e-6):
-    def spatial_contrast(frames: torch.Tensor):
+    def _spatial_contrast(frames: torch.Tensor):
         """
         Computes the spatial speckle contrast for each frame using convolution.
 
@@ -116,7 +116,7 @@ def spatial_contrast(window_size=7, eps=1e-6):
         contrast = local_std / (local_mean + eps)
         
         return contrast
-    return spatial_contrast
+    return _spatial_contrast
 
 
 def temporal_contrast(window_size=7, eps=1e-6):

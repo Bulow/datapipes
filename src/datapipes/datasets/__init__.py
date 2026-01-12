@@ -63,6 +63,9 @@ def _get_dataset_class_for_extension_pattern(path: Path|str) -> type:
 cached_datasets: Dict[Path, DatasetSource] = {}
 
 def clear_dataset_reuse_cache():
+    for path, dataset in cached_datasets.items():
+        if hasattr(dataset, "close") and callable(dataset.close):
+            dataset.close()
     cached_datasets.clear()
 
 # def reuse_if_cached(path: Path) -> DatasetSource:
@@ -87,9 +90,9 @@ def load_dataset(
         case "cache_raw":
             return CachedDataset(underlying_dataset=ds)
         case "cache_compressed":
-            return CompressedCachedDataset(remote_compressed_ds=ds)
+            return CompressedCachedDataset(underlying_compressed_ds=ds)
         case "cache_raw_reuse":
-            if path in cached_datasets.keys():
+            if path in cached_datasets.keys() and cached_datasets[path]._error is None:
                 print(f"Reusing cached dataset: {path.name}")
                 return cached_datasets[path]
             else:
@@ -97,11 +100,11 @@ def load_dataset(
                 cached_datasets[path] = ds
                 return ds
         case "cache_compressed_reuse":
-            if path in cached_datasets.keys():
+            if path in cached_datasets.keys() and cached_datasets[path]._error is None:
                 print(f"Reusing cached dataset: {path.name}")
                 return cached_datasets[path]
             else:
-                ds = CompressedCachedDataset(remote_compressed_ds=ds)
+                ds = CompressedCachedDataset(underlying_compressed_ds=ds)
                 cached_datasets[path] = ds
                 return ds
         case "no_caching":

@@ -9,6 +9,9 @@ import time
 
 from datapipes.utils.benchmarking import human_readable_filesize, get_disk_size, get_logical_size
 
+from datapipes.datasets.utils.background_progress_jupyter import ThreadSafeProgress
+
+
 Index = Any
 
 class CachedDataset(datasets.DatasetSource):
@@ -41,8 +44,10 @@ class CachedDataset(datasets.DatasetSource):
         if self._batch <= 0:
             raise ValueError("batch_frames must be > 0")
 
-        self.storage_size = get_logical_size(self._underlying_dataset)
+        self.storage_size: int = get_disk_size(self._underlying_dataset)
+        self.logical_size: int = get_logical_size(self._underlying_dataset)
 
+        self._progress_bar: ThreadSafeProgress = ThreadSafeProgress(total_storage_size = self.storage_size, total_logical_size=self.logical_size, total_type_used_for_stats="logical", desc="Prefetching frames in the background", path=self.path).display()
         
         self._tensors_allocated: bool = False
         self._cache: torch.Tensor
@@ -98,8 +103,9 @@ class CachedDataset(datasets.DatasetSource):
         try:
             n, c, h, w = self._shape
 
-            print(f"Prefetching {len(self)} frames ({human_readable_filesize(self.storage_size)}) in the background")
+            # print(f"Prefetching {len(self)} frames ({human_readable_filesize(self.storage_size)}) in the background")
             start_time = time.perf_counter()
+            self._progress_bar.set_status(f"Allocating memory ({human_readable_filesize(self.storage_size)})")
             
 
             self._valid = torch.zeros(self.shape[0], dtype=torch.bool, device="cpu", pin_memory=True)
@@ -111,6 +117,8 @@ class CachedDataset(datasets.DatasetSource):
             with self._cv:
                 self._tensors_allocated = True
 
+            self._progress_bar.set_status("Loading dataset into RAM. The dataset is ready to use.")
+
             while not self._stop.is_set():
                 with self._cv:
                     start = self._prefetch_pos
@@ -118,7 +126,9 @@ class CachedDataset(datasets.DatasetSource):
                         stop_time = time.perf_counter()
                         prefetch_time: float = stop_time - start_time
                         
-                        print(f"Finished prefetching {n} frames ({human_readable_filesize(self.storage_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(self.storage_size / prefetch_time))}/s")
+                        # print(f"Finished prefetching {n} frames ({human_readable_filesize(self.storage_size)}) in {prefetch_time:.2f}s, averaging {human_readable_filesize(int(self.storage_size / prefetch_time))}/s")
+                        self._progress_bar.set_status("Done")
+                        self._progress_bar.close()
                         self._cv.notify_all()
                         return
                     end = min(n, start + self._batch)
@@ -137,9 +147,13 @@ class CachedDataset(datasets.DatasetSource):
                     self._valid[start:end] = True
                     self._cv.notify_all()
 
+                time.sleep(0)
+                self._progress_bar.report(n=fetched.numel() * fetched.element_size())
+
         except BaseException as e:
             with self._cv:
                 self._error = e
+                self._progress_bar.error(str(e))
                 self._cv.notify_all()
 
     def _normalize_slice_dim0(self, s: slice) -> tuple[int, int]:
