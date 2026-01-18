@@ -1,6 +1,7 @@
 """
 Plot tensors
 """
+import enum
 
 from datapipes.utils import introspection
 from datapipes.utils.slicer import Slicer
@@ -11,6 +12,7 @@ from datapipes.utils.simpletqdm import SimpleTqdm
 import logging
 import traceback
 import builtins
+from datapipes.utils import output_server
 
 _logging_enabled: bool = False
 
@@ -62,12 +64,37 @@ def print_gpu_info():
         print("CUDA is not available - PyTorch will use CPU")
 
 def set_running_under_matlab():
-    setattr(builtins, "__RUNNING_UNDER_MATLAB__", True)
+    # setattr(builtins, "__RUNNING_UNDER_MATLAB__", True)
+    from datapipes.utils import set_running_under_matlab
 
 def running_under_matlab() -> bool:
     try:
         return bool(getattr(builtins, "__RUNNING_UNDER_MATLAB__", False))
     except Exception:
         return False
+
+def running_under_jupyter() -> bool:
+    try:
+        from IPython import get_ipython
+
+        ip = get_ipython()
+        if ip is not None:
+            return True
+    except:
+        return False
+    return False
+
+class ExecutionMode(enum.StrEnum):
+    shell = "shell"
+    jupyter = "jupyter"
+    matlab = "matlab"
+
+def get_execution_mode() -> ExecutionMode:
+    if running_under_jupyter():
+        return ExecutionMode.jupyter
+    elif running_under_matlab():
+        return ExecutionMode.matlab
+    else:
+        return ExecutionMode.shell
 
 __all__ = ["introspection", "Slicer", "cache_results", "enable_jupyter_autoreload", "print_gpu_info", "import_resource", "running_under_matlab", "SimpleTqdm"]

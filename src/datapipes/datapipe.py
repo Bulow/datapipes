@@ -17,6 +17,7 @@ from typing import Literal, Callable, Iterable, Iterator, Any, Optional
 # from datapipes.utils.logging import progress_bar
 # TODO: Make DataPipe composable with abstract datapipes
 
+import functools
 
 @dataclass
 class FutureSlice:
@@ -38,7 +39,7 @@ class DataPipe(DatasetSource):
 
     def __len__(self):
         return self.shape[0]
-      
+
     # def __repr__(self):
     #     return f"{type(self).__qualname__}(shape={self.shape}, segments={self.segments}, pad_size={self.pad_size})"
     
@@ -52,7 +53,7 @@ class DataPipe(DatasetSource):
         return Path(self._dataset.path)
     
     @property
-    def shape(self) -> torch.Tensor:
+    def shape(self) -> tuple[int, ...]:
         return self._shape
     
     @property

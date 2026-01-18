@@ -1,231 +1,13 @@
-# import threading
-# import queue
-# import time
-# import ipywidgets as widgets
-# from IPython.display import display
-
-# class ThreadSafeProgress:
-#     """
-#     IPython/Jupyter-friendly progress widget that keeps updating
-#     *after the cell returns*.
-
-#     - Worker threads call .report(n) and .set_status(text) (thread-safe).
-#     - A dedicated UI thread consumes queued updates and updates the widget.
-#     - Call .close() when done (or use as a context manager).
-
-#     Notes:
-#     - In classic Jupyter/Notebook/Lab, widget updates generally work from a background
-#       thread via trait updates. This pattern avoids the worker touching widget state.
-
-
-#     Example use:
-#     ```
-#     from datapipes.datasets.utils.background_progress_jupyter import ThreadSafeProgress
-#     import threading
-#     import time
-
-#     def prefetch_worker(p: ThreadSafeProgress, n: int):
-#         for i in range(n):
-#             time.sleep(0.05)  # simulate IO
-#             p.report(1)
-#             if i % 20 == 0:
-#                 p.set_status(f"Fetched item {i}...")
-#         p.set_status("Done")
-#         p.close()
-
-#     p = ThreadSafeProgress(total=200, desc="Prefetching").display()
-#     threading.Thread(target=prefetch_worker, args=(p, 200), daemon=True).start()
-
-
-#     ```
-#     """
-#     _SENTINEL_CLOSE = object()
-
-#     def __init__(self, total: int | None = None, desc: str = "Working", show_eta: bool = True):
-#         self.total = total
-#         self.desc = desc
-#         self.show_eta = show_eta
-
-#         self._q: "queue.Queue[tuple[str, object] | object]" = queue.Queue()
-#         self._stop_evt = threading.Event()
-#         self._ui_thread: threading.Thread | None = None
-#         self._start_time = None
-#         self._value = 0
-#         self._lock = threading.Lock()
-
-#         # --- widgets ---
-#         self._title = widgets.HTML(value=f"<b>{self.desc}</b>")
-#         self._bar = widgets.IntProgress(
-#             value=0,
-#             min=0,
-#             max=(total if total is not None else 1),  # updated later for unknown total
-#             description="",
-#         )
-#         self._meta = widgets.HTML(value="")  # e.g. "12 / 100 • 3.1 it/s • ETA 00:28"
-#         self._status = widgets.HTML(value="")  # optional arbitrary status text
-#         self.widget = widgets.VBox([self._title, self._bar, self._meta, self._status])
-
-#     def display(self):
-#         """Display the widget once. Safe to call multiple times."""
-#         display(self.widget)
-#         # Start UI thread on first display
-#         if self._ui_thread is None:
-#             self._start_time = time.time()
-#             self._ui_thread = threading.Thread(target=self._ui_loop, name="ThreadSafeProgressUI", daemon=True)
-#             self._ui_thread.start()
-#         return self
-
-#     # ---------- thread-safe reporting API (call from worker threads) ----------
-#     def report(self, n: int = 1):
-#         """Report that n units of work completed."""
-#         if n:
-#             self._q.put(("inc", int(n)))
-
-#     def set_total(self, total: int):
-#         """Set/adjust the total (useful if you learn it later)."""
-#         self._q.put(("total", int(total)))
-
-#     def set_status(self, text: str):
-#         """Set a status line under the bar."""
-#         self._q.put(("status", str(text)))
-
-#     def close(self):
-#         """Stop updating and mark complete."""
-#         self._q.put(self._SENTINEL_CLOSE)
-
-#     def stop(self):
-#         """Alias for close()."""
-#         self.close()
-
-#     # ---------- context manager ----------
-#     def __enter__(self):
-#         self.display()
-#         return self
-
-#     def __exit__(self, exc_type, exc, tb):
-#         self.close()
-#         return False
-
-#     # ---------- internal UI loop ----------
-#     def _ui_loop(self):
-#         last_render = 0.0
-#         # We batch updates to avoid spamming comms
-#         pending_inc = 0
-#         pending_status: str | None = None
-#         pending_total: int | None = None
-
-#         while not self._stop_evt.is_set():
-#             try:
-#                 msg = self._q.get(timeout=0.1)
-#             except queue.Empty:
-#                 msg = None
-
-#             if msg is self._SENTINEL_CLOSE:
-#                 # flush any pending increments
-#                 if pending_inc:
-#                     self._apply_inc(pending_inc)
-#                     pending_inc = 0
-#                 if pending_total is not None:
-#                     self._apply_total(pending_total)
-#                     pending_total = None
-#                 if pending_status is not None:
-#                     self._apply_status(pending_status)
-#                     pending_status = None
-
-#                 # mark done visually
-#                 self._bar.bar_style = "success"
-#                 self._stop_evt.set()
-#                 break
-
-#             if isinstance(msg, tuple):
-#                 kind, payload = msg
-#                 if kind == "inc":
-#                     pending_inc += int(payload)
-#                 elif kind == "status":
-#                     pending_status = str(payload)
-#                 elif kind == "total":
-#                     pending_total = int(payload)
-
-#             # Render at most ~10 times/sec
-#             now = time.time()
-#             if now - last_render >= 0.1:
-#                 if pending_total is not None:
-#                     self._apply_total(pending_total)
-#                     pending_total = None
-#                 if pending_inc:
-#                     self._apply_inc(pending_inc)
-#                     pending_inc = 0
-#                 if pending_status is not None:
-#                     self._apply_status(pending_status)
-#                     pending_status = None
-#                 self._render_meta()
-#                 last_render = now
-
-#         # final render
-#         self._render_meta()
-
-#     def _apply_total(self, total: int):
-#         with self._lock:
-#             self.total = total
-#             self._bar.max = max(1, total)  # IntProgress requires max >= 1
-
-#     def _apply_inc(self, n: int):
-#         with self._lock:
-#             self._value += n
-#             # If total unknown, grow max so bar still shows motion
-#             if self.total is None:
-#                 # Keep a little headroom so it doesn't pin at 100%
-#                 self._bar.max = max(self._bar.max, self._value + 1)
-#             self._bar.value = min(self._value, self._bar.max)
-
-#     def _apply_status(self, text: str):
-#         # escape is handled by HTML widget; if you need raw HTML, pass it intentionally
-#         self._status.value = f"<span>{text}</span>"
-
-#     def _render_meta(self):
-#         with self._lock:
-#             v = self._value
-#             total = self.total
-#             t0 = self._start_time
-
-#         if not t0:
-#             return
-
-#         elapsed = max(1e-9, time.time() - t0)
-#         rate = v / elapsed
-
-#         def fmt_eta(seconds: float) -> str:
-#             seconds = max(0, int(seconds))
-#             m, s = divmod(seconds, 60)
-#             h, m = divmod(m, 60)
-#             if h:
-#                 return f"{h:02d}:{m:02d}:{s:02d}"
-#             return f"{m:02d}:{s:02d}"
-
-#         if total is None:
-#             meta = f"{v} • {rate:.2f} it/s"
-#         else:
-#             remaining = max(0, total - v)
-#             eta = (remaining / rate) if rate > 0 else float("inf")
-#             if self.show_eta and eta != float("inf"):
-#                 meta = f"{v} / {total} • {rate:.2f} it/s • ETA {fmt_eta(eta)}"
-#             else:
-#                 meta = f"{v} / {total} • {rate:.2f} it/s"
-
-#         self._meta.value = f"<span style='font-family: monospace;'>{meta}</span>"
-
-
-
-#///
-
 import threading
 import queue
 import time
 import html as _html
 import math
 
-import ipywidgets as widgets
-from IPython.display import display
+# import ipywidgets as widgets
+# from IPython.display import display
+
+from datapipes.utils import html_output
 
 from dataclasses import dataclass
 from typing import Optional, Callable, Literal
@@ -411,13 +193,13 @@ class EmaRate:
     Exponentially-smoothed rate estimator for monotonic counters.
 
     Minimal interface:
-      - update(value, now=None) -> float  (smoothed rate, units/sec)
-      - reset(value=0, now=None)
+        - update(value, now=None) -> float  (smoothed rate, units/sec)
+        - reset(value=0, now=None)
 
     Design choices:
-      - Uses per-interval instantaneous rate (dv/dt).
-      - If dv <= 0, leaves EMA unchanged (prevents ETA spikes during pauses).
-      - Seeds EMA on first positive dv, else 0.0.
+        - Uses per-interval instantaneous rate (dv/dt).
+        - If dv <= 0, leaves EMA unchanged (prevents ETA spikes during pauses).
+        - Seeds EMA on first positive dv, else 0.0.
     """
     alpha: float = 0.2
 
@@ -460,6 +242,9 @@ class EmaRate:
         return float(self._ema)
 
 EMA_ALPHA: float = 0.2
+
+
+from datapipes.utils.output_server import set_output, show_output
 
 # TODO: Create matlab cop-out
 class ThreadSafeProgress:
@@ -507,12 +292,9 @@ class ThreadSafeProgress:
         self._value = 0
         self._status = ""
 
-        # single widget output
-        self.widget = widgets.HTML(value="")
-
     def display(self):
         """Display once and start the UI loop thread."""
-        display(self.widget)
+        
         if self._ui_thread is None:
             self._start_time = time.time()
             self._rate_ema.reset(value=0, now=self._start_time)
@@ -522,6 +304,9 @@ class ThreadSafeProgress:
             self._ui_thread.start()
             # initial render
             self._render()
+
+            # show_output("path")
+            html_output.show_output(self.path)
         return self
 
     # ---------- thread-safe reporting API (call from worker threads) ----------
@@ -703,6 +488,8 @@ class ThreadSafeProgress:
                 f"<pre>{_html.escape(repr(ctx))}</pre>"
             )
 
-        self.widget.value = rendered
+        # self.widget_key.value = rendered
+        # set_output("path", rendered)
+        html_output.set_output(self.path, rendered)
         if self._error:
                 self.close()

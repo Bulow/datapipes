@@ -26,6 +26,8 @@ from typing import Callable, Dict, Iterable, Literal, Optional
 
 from pathlib import Path
 
+
+
 Handler = Callable[[Path], DatasetSource]
 
 # TODO: Use glob instead
@@ -66,6 +68,7 @@ def clear_dataset_reuse_cache():
     for path, dataset in cached_datasets.items():
         if hasattr(dataset, "close") and callable(dataset.close):
             dataset.close()
+            del dataset
     cached_datasets.clear()
 
 # def reuse_if_cached(path: Path) -> DatasetSource:
@@ -73,6 +76,13 @@ def clear_dataset_reuse_cache():
 #         return cached_datasets[path]
 #     else:
 #         return 
+
+def add_dataset_to_reuse_cache(ds: DatasetSource):
+    # To conserve RAM, the limit is currently set at 1 reusable dataset. This is typically enough to prevent reload in a notebook setting. The reuse cache is not intended to manage precached datasets in a batch processing setting.
+    if len(cached_datasets) > 0:
+        # If limit is later increased from 1, we should probably only evict the oldest dataset
+        clear_dataset_reuse_cache()
+        cached_datasets[ds.path] = ds
 
 def load_dataset(
     path: Path|str,
@@ -97,7 +107,7 @@ def load_dataset(
                 return cached_datasets[path]
             else:
                 ds = CachedDataset(underlying_dataset=ds)
-                cached_datasets[path] = ds
+                add_dataset_to_reuse_cache(ds)
                 return ds
         case "cache_compressed_reuse":
             if path in cached_datasets.keys() and cached_datasets[path]._error is None:
@@ -105,7 +115,7 @@ def load_dataset(
                 return cached_datasets[path]
             else:
                 ds = CompressedCachedDataset(underlying_compressed_ds=ds)
-                cached_datasets[path] = ds
+                add_dataset_to_reuse_cache(ds)
                 return ds
         case "no_caching":
             return ds

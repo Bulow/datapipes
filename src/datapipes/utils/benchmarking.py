@@ -1,7 +1,9 @@
+import datapipes
 from datapipes.datasets import DatasetSource
 import torch
 import numpy as np
-from datapipes import datasets
+from datapipes import datasets, sinks
+from datapipes.plotting.plots import plot
 from datapipes.datapipe import DataPipe
 import time
 import sys
@@ -126,7 +128,10 @@ def _get_memory_size(obj, seen=None):
 
 
 def print_memory_stats(datapipe: DataPipe):
-    disk_size = human_readable_filesize(get_disk_size(datapipe))
+    if hasattr(datapipe, "path"):
+        disk_size = human_readable_filesize(get_disk_size(datapipe))
+    else:
+        disk_size = "No file path associated with datapipe"
     ram_size = human_readable_filesize(get_memory_size(datapipe))
     logical_size = human_readable_filesize(get_logical_size(datapipe))
 
@@ -139,5 +144,22 @@ Memory stats:
     -
     shape: {datapipe.shape}
     dtype: {str(datapipe[0].dtype)}
-    device: {datapipe[0].dtype}
+    device: {datapipe[0].device}
 """)
+    
+
+def mean_output_benchmark(pt, desc: str="output") -> torch.Tensor:
+    t = MultiBlockTimer()
+    with t:
+        m = sinks.mean(DataPipe(pt))
+
+    print(human_readable_time(t.total))
+    contrast_computation_bandwidth: float = (get_logical_size(pt) / t.total)
+    print(f"""
+Computed temporal_mean({desc}) of {len(pt)} frames (from raw lsci frames):
+    Time: {human_readable_time(t.total)}
+    Datapipe output computed at: {human_readable_filesize(int(contrast_computation_bandwidth))}/s
+    """)
+    print_memory_stats(pt)
+    plot(m)
+    return m
