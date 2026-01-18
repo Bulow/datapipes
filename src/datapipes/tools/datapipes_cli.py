@@ -4,8 +4,10 @@ from typing import Optional
 from pathlib import Path
 from datapipes.tools import dataset_wrangler
 from datapipes.tools.dataset_wrangler_cli import main as dataset_wrangler
+from datapipes.tools.init_matlab import install_datapipes_in_matlab
 from datapipes.utils import import_resource
 import subprocess
+import shutil
 
 def init(argv: Optional[list[str]] = None) -> int:
     if argv is not None and len(argv) > 0:
@@ -20,6 +22,11 @@ def init(argv: Optional[list[str]] = None) -> int:
 
     subprocess.run(str(install_script), shell=True, check=True)
 
+def matlab_installer(argv: Optional[list[str]] = None) -> int:
+    install_datapipes_in_matlab()
+
+    
+
 def print_help(argv: Optional[list[str]] = None) -> int:
     print(f"Available commands:")
     for t in tools.keys():
@@ -29,6 +36,7 @@ tools = {
     "help": print_help,
     "init": init,
     "dataset-wrangler": dataset_wrangler,
+    "init-matlab": matlab_installer,
 }
 
 def main(argv: Optional[list[str]] = None) -> int:

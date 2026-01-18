@@ -71,11 +71,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/datapipes"]
 
+[tool.hatch.build]
+include = [
+  "datapipes/utils/resources/**",
+]
+
 [tool.setuptools.packages.find]
 where = ["src/resources"]
 
-[tool.setuptools.package-data]
-resources = ["datapipes/utils/resources"]
-stbn = ["stbn.pt"] # Repackaged from https://github.com/NVIDIA-RTX/STBN/
-mediapipe_hand_landmarker = ["hand_landmarker.task"] # From https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker
-quickstart = ["quickstart.zip"]
