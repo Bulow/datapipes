@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Dict, Optional
 
 from datapipes.gradio_ui.ui_utils import escape_html
-from datapipes.gradio_ui.ui_utils import html_progress_bar_slim
+from datapipes.gradio_ui.ui_utils import html_progress_bar_slim, html_progress_bar_layered
 from datapipes.gradio_ui.parallel_process_manager import SnapshotRow, TaskStatus
 
 def _status_badge(status: TaskStatus, status_display_label: Optional[str]=None) -> str:
