@@ -16,7 +16,7 @@ from datapipes.gradio_ui import parallel_process_ui
 from datapipes.gradio_ui.gradio_folder_picker import folder_picker
 
 from datapipes.gradio_ui.sys_stats import system_stats_html
-
+from pathlib import Path
 
 def launch_dataset_wrangler(
     default_input_dir: Optional[str] = None,
@@ -68,8 +68,8 @@ def launch_dataset_wrangler(
 def add_shortcut_desktop(input_folder: Optional[gr.Textbox], output_folder: Optional[gr.Textbox]):
     import subprocess
 
-    input_arg = f' --in "{input_folder}"' if input_folder is not None else ""
-    output_arg = f' --out "{output_folder}"' if output_folder is not None else ""
+    input_arg = f' --in "{Path(input_folder).resolve().as_posix()}"' if input_folder is not None else ""
+    output_arg = f' --out "{Path(output_folder).resolve().as_posix()}"' if output_folder is not None else ""
 
     ps_script = f'''
 $WshShell = New-Object -ComObject WScript.Shell
@@ -88,8 +88,8 @@ $Shortcut.Save()
 def add_shortcut_start_menu(input_folder: Optional[gr.Textbox], output_folder: Optional[gr.Textbox]):
     import subprocess
 
-    input_arg = f' --in "{input_folder}"' if input_folder is not None else ""
-    output_arg = f' --out "{output_folder}"' if output_folder is not None else ""
+    input_arg = f' --in "{Path(input_folder).resolve().as_posix()}"' if input_folder is not None else ""
+    output_arg = f' --out "{Path(output_folder).resolve().as_posix()}"' if output_folder is not None else ""
 
     ps_script = f'''
 $WshShell = New-Object -ComObject WScript.Shell
