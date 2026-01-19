@@ -2,12 +2,13 @@ import sys
 import argparse
 from typing import Optional
 from pathlib import Path
-from datapipes.tools import dataset_wrangler
+from datapipes.tools import dataset_wrangler, get_python_exe_cli, get_datapipes_cli_command_script
 from datapipes.tools.dataset_wrangler_cli import main as dataset_wrangler
 from datapipes.tools.init_matlab import install_datapipes_in_matlab
 from datapipes.utils import import_resource
 import subprocess
 import shutil
+
 
 def init(argv: Optional[list[str]] = None) -> int:
     if argv is not None and len(argv) > 0:
@@ -28,8 +29,8 @@ def insert_datawrangler_lnk_shortcut_in_cwd():
     ps_script = f'''
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{Path.cwd().resolve()}\DatasetWrangler.lnk")
-$Shortcut.TargetPath = "{tools.get_python_exe_cli().as_posix()}"
-$Shortcut.Arguments = '"{tools.get_datapipes_cli_command_script().as_posix()}" dataset-wrangler'
+$Shortcut.TargetPath = "{get_python_exe_cli().as_posix()}"
+$Shortcut.Arguments = '"{get_datapipes_cli_command_script().as_posix()}" dataset-wrangler'
 $Shortcut.WorkingDirectory = "$env:USERPROFILE"
 $Shortcut.Save()
     '''
