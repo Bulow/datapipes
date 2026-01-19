@@ -6,14 +6,18 @@ from datapipes.tools.init_matlab.install_matlab_library import install_matlab_li
 
 def install_datapipes_in_matlab():
     install_folder = _matlab_default_install_dir()
+    print(f"Extracting files to {install_folder}")
     _install_lib_files(install_folder=install_folder)
 
+    print(f"Setting up python environment")
     _write_load_python_function_matlab(install_folder=install_folder)
 
     # Run install.m in matlab
     # installer = install_folder / "install.m"
+    print(f"Running install.m in MATLAB")
     install_matlab_library(library_dir=install_folder)
 
+    print(f"Extracting sample files")
     sample_files = ["brrr.m", "quickstart.m", "markus.m"]
 
     sample_dest_folder = Path.cwd()
@@ -21,6 +25,7 @@ def install_datapipes_in_matlab():
         with import_resource.as_path(f"matlab/{s}") as q:
             shutil.copyfile(src=q, dst=sample_dest_folder / s)
 
+    print("\n\n_______________________________________________________________________\n")
     print(f"Installed datapipes for matlab into \"{install_folder.as_posix()}\".")
     print(f"Datapipes has been added to matlab path.")
     print(f"For a tutorial, open \"quickstart.m\" in \"{sample_dest_folder.as_posix()}\".")
