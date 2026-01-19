@@ -22,7 +22,26 @@ def init(argv: Optional[list[str]] = None) -> int:
 
     subprocess.run(str(install_script), shell=True, check=True)
 
+def insert_datawrangler_lnk_shortcut_in_cwd():
+    # ps_script = f'''
+    # $WshShell = New-Object -ComObject WScript.Shell
+    # $Shortcut = $WshShell.CreateShortcut("{Path.cwd().resolve()}\DatasetWrangler.lnk")
+    # $Shortcut.TargetPath = "C:\Windows\System32\cmd.exe"
+    # $Shortcut.Arguments = '/c uv tool run datapipes dataset-wrangler && pause'
+    # $Shortcut.WorkingDirectory = "$env:USERPROFILE"
+    # $Shortcut.Save()
+    #     '''
+
+    # subprocess.run(["powershell", "-Command", ps_script], check=True)
+
+    launch_script_bat = f'''
+datapipes dataset-wrangler && pause
+'''
+    with open(Path.cwd() / "launch_DatasetWrangler.bat", "w") as f:
+        f.write(launch_script_bat)
+
 def matlab_installer(argv: Optional[list[str]] = None) -> int:
+    insert_datawrangler_lnk_shortcut_in_cwd()
     install_datapipes_in_matlab()
 
     

@@ -56,7 +56,7 @@ if errorlevel 1 (
     )
 )
 
-uv tool update-shell
+:: uv tool update-shell
 
 :: Refresh PATH again
 for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('PATH','User')"`) do set "USERPATH=%%A"
@@ -67,7 +67,7 @@ set "PATH=%USERPATH%;%MACHINEPATH%"
 :: Uses the python environment of the datapipes uv-tool installation
 echo.
 echo Installing datapipes for MATLAB...
-uv tool run datapipes init-matlab
+datapipes init-matlab
 if errorlevel 1 (
     echo ERROR: uv tool run datapipes init-matlab failed.
     exit /b 1

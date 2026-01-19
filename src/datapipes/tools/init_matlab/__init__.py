@@ -4,6 +4,7 @@ import shutil
 import sys
 from datapipes.tools.init_matlab.install_matlab_library import install_matlab_library
 
+
 def install_datapipes_in_matlab():
     install_folder = _matlab_default_install_dir()
     print(f"Extracting files to {install_folder}")
