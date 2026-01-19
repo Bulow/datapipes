@@ -75,7 +75,7 @@ def add_shortcut_desktop(input_folder: Optional[gr.Textbox], output_folder: Opti
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\DatasetWrangler.lnk")
 $Shortcut.TargetPath = "C:\Windows\System32\cmd.exe"
-$Shortcut.Arguments = '/c datapipes dataset-wrangler{input_arg}{output_arg} && pause'
+$Shortcut.Arguments = '/c uv tool run datapipes dataset-wrangler{input_arg}{output_arg} && pause'
 $Shortcut.WorkingDirectory = "$env:USERPROFILE"
 $Shortcut.Save()
     '''
@@ -106,7 +106,7 @@ $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 
 # Make the shortcut run a command:
 $Shortcut.TargetPath = "$env:WINDIR\System32\cmd.exe"
-$Shortcut.Arguments = '/c datapipes dataset-wrangler{input_arg}{output_arg} && pause'
+$Shortcut.Arguments = '/c uv tool run datapipes dataset-wrangler{input_arg}{output_arg} && pause'
 $Shortcut.WorkingDirectory = $env:USERPROFILE
 
 # Optional: icon (EXE, DLL, or ICO). ",0" is icon index inside the file.
