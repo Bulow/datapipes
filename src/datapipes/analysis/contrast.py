@@ -5,8 +5,9 @@ from skimage.morphology import disk
 
 import torch.nn.functional as F
 from datapipes.sic import sic
-from typing import Callable
 from datapipes.analysis.noise import multiplicative_noise_op, stbn_like
+
+from typing import Literal, Optional, Any, Callable
 
 gpu = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -75,33 +76,30 @@ def laplacian_contrast(frames: torch.Tensor):
     return contrast
 
 
-
-
-def spatial_contrast(window_size=7, eps=1e-6):
+def spatial_contrast(window_size=7, eps=1e-6, kernel_type: Literal["disk", "square"] = "square"):
+    """
+    Computes the spatial speckle contrast for each frame using convolution.
+    Args:
+        frames (torch.Tensor): Input tensor of shape (N, C, H, W) containing grayscale frames.
+        window_size (int): The size of the local window to compute statistics.
+        eps (float): A small constant to prevent division by zero.
+    Returns:
+        torch.Tensor: Tensor of shape (N, C, H, W) containing the speckle contrast for each pixel.
+    """
     def _spatial_contrast(frames: torch.Tensor):
-        """
-        Computes the spatial speckle contrast for each frame using convolution.
-
-        Args:
-            frames (torch.Tensor): Input tensor of shape (N, C, H, W) containing grayscale frames.
-            window_size (int): The size of the local window to compute statistics.
-            eps (float): A small constant to prevent division by zero.
-
-        Returns:
-            torch.Tensor: Tensor of shape (N, C, H, W) containing the speckle contrast for each pixel.
-        """
-        # with torch.no_grad():
-        # sic(frames)
-        # print(frames)
-
         # Create a convolutional kernel for computing local mean
-        mean_kernel = torch.from_numpy(disk(window_size // 2)).to(frames.device, frames.dtype) # H W
+        match kernel_type:
+            case "disk":
+                mean_kernel = torch.from_numpy(disk(window_size // 2)).to(frames.device, frames.dtype) # H W
+            
+            case "square":
+                mean_kernel = torch.ones(window_size, window_size).to(frames.device, frames.dtype)    
+            
         mean_kernel /= mean_kernel.sum()
         mean_kernel = einops.rearrange(mean_kernel, "H W -> 1 1 H W") # N C H W
-        
+    
         # sic(mean_kernel)
         # print(mean_kernel)
-
         # Compute local mean using convolution
         local_mean = F.conv2d(frames, mean_kernel)
         
@@ -190,7 +188,6 @@ def cumulative_spatial_contrast(frames: torch.Tensor) -> torch.Tensor:
     csum = torch.cumsum(frames, dim=0)  / torch.arange(start=1, end=frames.shape[0] + 1, step=1, device=frames.device)
     c_contrast = spatial_contrast_total_frame(csum)
     return c_contrast
-
 
 def bfi(frames: torch.Tensor) -> torch.Tensor:
     return 1.0 / (frames ** 2)
