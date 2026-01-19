@@ -75,6 +75,9 @@ packages = ["src/datapipes"]
 include = [
   "datapipes/utils/resources/**",
 ]
+# Includes the following files from other sources:
+# "stbn.pt" # Repackaged from https://github.com/NVIDIA-RTX/STBN/
+# "hand_landmarker.task" # From https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker
 
 [tool.setuptools.packages.find]
 where = ["src/resources"]

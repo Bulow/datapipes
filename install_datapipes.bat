@@ -35,11 +35,10 @@ if errorlevel 1 (
 )
 
 echo.
-
 :: Check if datapipes exists
 where datapipes >nul 2>&1
 if errorlevel 1 (
-    echo Installing datapipes using uv...
+    echo Installing datapipes...
     uv tool install --python 3.12 git+https://github.com/Bulow/datapipes
     uv tool upgrade datapipes
     if errorlevel 1 (
@@ -61,17 +60,3 @@ if errorlevel 1 (
 for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('PATH','User')"`) do set "USERPATH=%%A"
 for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('PATH','Machine')"`) do set "MACHINEPATH=%%A"
 set "PATH=%USERPATH%;%MACHINEPATH%"
-
-:: Install matlab integration as a matlab package in the default MATLAB library folder
-:: Uses the python environment of the datapipes uv-tool installation
-echo.
-echo Installing datapipes for MATLAB...
-datapipes init-matlab
-if errorlevel 1 (
-    echo ERROR: uv tool run datapipes init-matlab failed.
-    exit /b 1
-)
-
-echo.
-echo Done.
-pause
