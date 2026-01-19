@@ -38,13 +38,15 @@ def _write_load_python_function_matlab(install_folder: Path):
     python_path = Path(sys.executable).resolve()
     print(python_path)
     matlab_function = f'''
-
 function loadPython()
 
-if isempty(pyenv)
-    disp("[Datapipes]: Loading python environment - this takes a few seconds and is only done once per session.")
-    pyenv(Version="{python_path}", ExecutionMode="OutOfProcess") %, ExecutionMode="InProcess"); %
+pe = pyenv;
+
+if pe.Status == "NotLoaded"
+    disp("[Datapipes]: Loading python environment - this takes a few seconds and is only done once per session.");
+    pyenv(Version="{python_path}", ExecutionMode="InProcess"); %, ExecutionMode="OutOfProcess"); %
 end
+
 '''
     with open(install_folder / "+MatDatapipes/loadPython.m", "w") as f:
         f.write(matlab_function)
