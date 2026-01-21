@@ -29,7 +29,6 @@ def install_datapipes_in_matlab():
     print("\n\n_______________________________________________________________________\n")
     print(f"Installed datapipes for matlab into \"{install_folder.as_posix()}\".")
     print(f"Datapipes has been added to matlab path.")
-    print(f"For a tutorial, open \"quickstart.m\" in \"{sample_dest_folder.as_posix()}\".")
 
 def _install_lib_files(install_folder: Path):
     

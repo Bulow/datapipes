@@ -33,6 +33,7 @@ class DataPipe(DatasetSource):
         self.auto_indexing_window: AutoIndexingWindow = AutoIndexingWindow(dataset=self._dataset, fwd_transforms=self.segments)
 
         self._shape = self.auto_indexing_window.shape
+        self._dtype = None
 
         self.requires_grad = requires_grad
 
@@ -55,6 +56,12 @@ class DataPipe(DatasetSource):
     @property
     def shape(self) -> tuple[int, ...]:
         return self._shape
+    
+    @property
+    def dtype(self):
+        if self._dtype is None:
+            self._dtype = self[0, 0, 0, 0].dtype
+        return self._dtype
     
     @property
     def ndim(self):
