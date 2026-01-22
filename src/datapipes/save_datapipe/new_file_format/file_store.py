@@ -10,7 +10,7 @@ import os
 from dataclasses import asdict, is_dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Iterable, Literal, Optional, Protocol, Tuple
+from typing import Any, Callable, Iterable, Literal, Optional, Protocol, Tuple, Dict
 
 # Base on h5py initially
 import h5py as storage_backend
@@ -41,6 +41,10 @@ def get_val(group: storage_backend.Group, name: str) -> Any:
     
     # Passthrough
     return data
+
+def get_metadata(group: storage_backend.Group, name: str) -> Dict[str, Any]:
+    json_str = get_val(group, name)
+    return json.loads(json_str)
     
 class FileStore:
     def __init__(self, path: Path|str, io_mode: Literal["r", "w"] = "r"):
@@ -92,7 +96,7 @@ class FileStore:
         frames_group = fs._file["frames"]
         fs.frames = Frames.open(frames_group)
 
-        fs.metadata = get_val(fs._file, "metadata")
+        fs.metadata = get_metadata(fs._file, name="metadata") # get_val(fs._file, "metadata")
 
         return fs
 
