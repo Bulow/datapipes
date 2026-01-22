@@ -19,7 +19,7 @@ def _copy_folder(source_folder: Path, dest_folder: Path) -> None:
     shutil.copytree(
         src=source_folder,
         dst=dest_folder,
-        dirs_exist_ok=False,
+        dirs_exist_ok=True,
     )
 
 
