@@ -9,6 +9,19 @@ from datapipes.utils import import_resource
 import subprocess
 import shutil
 
+def _copy_folder(source_folder: Path, dest_folder: Path) -> None:
+    source_folder = Path(source_folder)
+    dest_folder = Path(dest_folder)
+
+    if not source_folder.is_dir():
+        raise FileNotFoundError(f"Source folder not found: {source_folder}")
+
+    shutil.copytree(
+        src=source_folder,
+        dst=dest_folder,
+        dirs_exist_ok=False,
+    )
+
 
 def init(argv: Optional[list[str]] = None) -> int:
     if argv is not None and len(argv) > 0:
@@ -17,7 +30,10 @@ def init(argv: Optional[list[str]] = None) -> int:
     if (destination / "pyproject.toml").exists():
         raise ValueError(f'{destination.as_posix()} already contains a project. Please run from an empty folder.')
     
-    import_resource.extract_file("quickstart.zip", destination=destination)
+    # import_resource.extract_file("quickstart.zip", destination=destination)
+
+    with import_resource.as_path("init") as source_path:
+        _copy_folder(source_folder=source_path, dest_folder=destination)
 
     install_script = destination / "install.bat"
 
