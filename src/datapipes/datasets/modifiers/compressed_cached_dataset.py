@@ -22,8 +22,6 @@ from datapipes.datasets.utils.background_progress_jupyter import ThreadSafeProgr
 class CompressedCachedDataset(datasets.DatasetSource):
     """
     Compressed cached DatasetSource wrapper with sequential background prefetch.
-
-    Note: By compressing frames cached in RAM, much less time is spent on expensive RAM->VRAM transfers when they are used for GPU computations compared to using CachedDataset which stores the frames at full size.
     """
     def __init__(
         self,
@@ -38,9 +36,6 @@ class CompressedCachedDataset(datasets.DatasetSource):
 
         self.storage_size: int = get_disk_size(self._underlying_dataset)
         self.logical_size: int = get_logical_size(self._underlying_dataset)
-
-
-        
 
         self._tensors_allocated: bool = False
         self.remote_compressed_frames: h5py.Dataset = self._underlying_dataset.frames
