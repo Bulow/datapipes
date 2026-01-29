@@ -61,9 +61,9 @@ def _clean_mask(mask: torch.Tensor) -> torch.Tensor:
     opened_mask = (dilated * mask)
     closed = kornia.morphology.closing(opened_mask.to(torch.float32), torch.ones(size=(2, 2), dtype=torch.float32, device="cuda"), engine="convolution").to(torch.uint8)
     
-    bc = kornia.filters.median_blur(map01(opened_mask.to(torch.float32)), kernel_size=11)
+    bc = kornia.filters.median_blur(map01(opened_mask.to(torch.float32)), kernel_size=3)
 
-    mb = kornia.filters.box_blur(bc.to(torch.float32), kernel_size=31, border_type="constant")**2
+    mb = kornia.filters.box_blur(bc.to(torch.float32), kernel_size=7, border_type="constant")**2
 
     _m, _c, _o, _bc = crop_to_common_size((mb > 0.5), closed > 0, opened_mask > 0, bc > 0)
 
@@ -89,8 +89,10 @@ def get_hand_mask(frames: torch.Tensor) -> torch.Tensor:
     # Union mask
     combined_mask = (m_mask | std_mask).to(torch.uint8)
 
+    # deblurred_mask = combined_mask
     # Denoise
-    blurred_mask = filters.blurs.uniform_disk_blur(map01(combined_mask.to(torch.float32)), kernel_size=3)
+    # blurred_mask = filters.blurs.uniform_disk_blur(map01(combined_mask.to(torch.float32)), kernel_size=3)
+    blurred_mask = kornia.filters.box_blur(input=map01(combined_mask.to(torch.float32)).unsqueeze(0), kernel_size=3, separable=True)
     deblurred_mask = (blurred_mask > 0.5).to(torch.uint8)
     deblurred_mask, combined_mask = plots._pad_to_largest(deblurred_mask, combined_mask)
     mask = (deblurred_mask * combined_mask).to(torch.uint8)

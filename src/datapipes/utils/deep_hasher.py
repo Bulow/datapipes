@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from tqdm import tqdm
 from functools import partial
 from typing import Literal, Callable, Iterable, Iterator, Any, Optional
-
+import h5py
 import logging
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,8 @@ class DeepHasher:
                     return torch.from_numpy(data).to(device="cpu", memory_format=torch.contiguous_format).numpy().tobytes()
                 case bytes():
                     return data
+                case h5py.Dataset:
+                    return torch.from_numpy(data[:]).to(device="cpu", memory_format=torch.contiguous_format).numpy().tobytes()
                 case _:
                     raise TypeError(f"Unsupported type: {type(data)}")
         data = [prep(d) for d in data]
