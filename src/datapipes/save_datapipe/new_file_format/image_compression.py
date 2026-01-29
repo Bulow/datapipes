@@ -53,6 +53,8 @@ encoder = _get_gpu_encoder()
 decoder = _get_gpu_decoder()
 
 def torch_encode(frames: torch.Tensor, codec: Optional[Codec]="jpeg2k", params: Optional[nvimgcodec.EncodeParams]=None) -> list[bytes]:
+    if isinstance(frames, np.ndarray):
+        frames = torch.from_numpy(frames)
     nv_images = nvimgcodec.as_images([f for f in einops.rearrange(frames.to("cuda", non_blocking=True), "F 1 H W -> F H W 1").contiguous()])
     encoded = encoder.encode(nv_images, codec, params=params)
     if encoded[0] is None:

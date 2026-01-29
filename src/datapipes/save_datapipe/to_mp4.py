@@ -6,6 +6,7 @@ from datapipes.datapipe import DataPipe
 from pathlib import Path
 # import test_compression_method as test
 from typing import Dict, Tuple, Any, Callable, List, Optional, Literal
+from datapipes.ops import Ops
 
 def _get_nv12(frames: torch.Tensor) -> torch.Tensor:
     assert frames.dtype == torch.uint8
@@ -38,6 +39,7 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
     out_path: output .mp4 filename
     fps: frames per second
     """
+    data = data | Ops.gpu
     assert len(data.shape) == 4
     assert data.shape[1] == 1, "Expect (N,1,H,W)"
     frames = data[0:1]

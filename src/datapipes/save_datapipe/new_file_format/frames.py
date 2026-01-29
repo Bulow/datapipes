@@ -15,11 +15,15 @@ from datapipes.save_datapipe.new_file_format.parallel_encode import (
     encode_frames_threaded,
 )
 
+from datapipes.save_datapipe.new_file_format.codecs import get_encoder, get_decoder
+
 from datapipes.save_datapipe.new_file_format.lazy_decoding_image_tensor import LazyDecodingImageTensor
 
 from datapipes.datasets import DatasetSource
 
 from datapipes.save_datapipe.new_file_format.wrapper_dataset import WrapperDataset
+
+
 
 def _is_string_dtype(dt):
     # bytes (S), unicode (U), or object that may contain strings
@@ -56,27 +60,32 @@ def decode_frame_by_frame(
     decode_func: Callable[[bytes], np.ndarray],
     **kwargs,
 ) -> np.ndarray:
-    return np.array([decode_func(encoded) for encoded in encoded_frames])
+    out = np.array([decode_func(encoded) for encoded in encoded_frames])
+    if out.ndim == 3 and out.shape[0] > 1:
+        out = einops.rearrange("n h w -> n 1 h w")
+    return out
 
-def get_encoder(codec_name: str) -> Callable[[np.ndarray], Iterable[bytes]]:
-    match codec_name:
-        case "j2k":
-            return partial(encode_frames_threaded, encode_func=partial(imagecodecs.htj2k_encode, reversible=True))
-        case "jxl":
-            return partial(encode_frames_threaded, encode_func=partial(imagecodecs.jpegxl_encode, lossless=True))
-        case _:
-            raise NotImplementedError
+# def get_encoder(codec_name: str) -> Callable[[np.ndarray], Iterable[bytes]]:
+#     match codec_name:
+#         case "j2k":
+#             return partial(encode_frames_threaded, encode_func=partial(imagecodecs.htj2k_encode, reversible=True))
+#         case "jxl":
+#             return partial(encode_frames_threaded, encode_func=partial(imagecodecs.jpegxl_encode, lossless=True))
+#         case _:
+#             raise NotImplementedError
 
-def get_decoder(codec_name: str) -> Callable[[Iterable[bytes]], np.ndarray]:
-    match codec_name:
-        case "j2k": # TODO: decode directly into assembled ndarray using views and the out kwarg
-            return partial(decode_frame_by_frame, decode_func=imagecodecs.htj2k_decode)
-        case "jxl":
-            return partial(decode_frame_by_frame, decode_func=imagecodecs.jpegxl_decode)
-        case _:
-            raise NotImplementedError
+# def get_decoder(codec_name: str) -> Callable[[Iterable[bytes]], np.ndarray]:
+#     match codec_name:
+#         case "j2k": # TODO: decode directly into assembled ndarray using views and the out kwarg
+#             return partial(decode_frame_by_frame, decode_func=imagecodecs.htj2k_decode)
+#         case "jxl":
+#             return partial(decode_frame_by_frame, decode_func=imagecodecs.jpegxl_decode)
+#         case _:
+#             raise NotImplementedError
     # def f(): raise NotImplementedError
     # return f
+
+
 
 FRAMES_FORMAT_VERSION: str = "2026.01.22.1"
 
@@ -251,10 +260,10 @@ class Frames(Protocol):
         )
 
     def set_timestamps(self, timestamps: np.ndarray):
-        self.timestamps.resize(size=(len(timestamps)))
+        self.timestamps.resize(size=(len(timestamps), ))
         self.timestamps[0:len(timestamps)] = timestamps
 
-    def add_frames(self, new_frames: np.ndarray, timestamps: Optional[np.ndarray]):
+    def add_frames(self, new_frames: np.ndarray, timestamps: Optional[np.ndarray]=None):
         # Ensure valid inputs
         if new_frames.shape[1:] != self.individual_frame_shape:
             raise ValueError(f"Expected shape {self.individual_frame_shape}, got {new_frames.shape = }")
@@ -265,10 +274,15 @@ class Frames(Protocol):
         if (timestamps is not None) and timestamps.dtype != np.uint64:
             raise TypeError(f"Expected timestamps to have dtype {self.dtype}, got {timestamps.dtype = }")
         
-        if len(new_frames) != len(timestamps):
+        if (timestamps is not None) and len(new_frames) != len(timestamps):
             raise ValueError(f"new_frames and timestamps must have equal length, got {len(new_frames) = }, {len(timestamps) = }")
 
-        new_frames = np.ascontiguousarray(einops.rearrange(new_frames, "n 1 h w -> n h w"))
+        if new_frames.ndim == 3:
+            new_frames = einops.rearrange(new_frames, "c h w -> 1 c h w")
+
+        # if new_frames.shape[1] == 3:
+        #     new_frames = einops.rearrange(new_frames, "n c h w -> n h w")
+        new_frames = np.ascontiguousarray(new_frames)
 
         # Encode data to be stored for batch
         encoded: Iterable[bytes] = list(self._encode_func(new_frames))
@@ -314,13 +328,14 @@ class Frames(Protocol):
         self._current_codestream_position += current_batch_byte_length
 
     def close(self) -> None:
-        self.group["shape"][...] = self.shape
+        if self.group.file.mode == "w":
+            self.group["shape"][...] = self.shape
 
-        # Resize arrays to final size
-        self.frame_lengths_bytes.resize((self.frame_count, ))
-        self.frame_start_memory_offsets.resize((self.frame_count, ))
-        self.timestamps.resize((self.frame_count, ))
-        self.encoded_frames.resize((self._current_codestream_position, ))
+            # Resize arrays to final size
+            self.frame_lengths_bytes.resize((self.frame_count, ))
+            self.frame_start_memory_offsets.resize((self.frame_count, ))
+            self.timestamps.resize((self.frame_count, ))
+            self.encoded_frames.resize((self._current_codestream_position, ))
 
         # Close file if needed
         if isinstance(self.group, storage_backend.File):

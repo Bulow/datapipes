@@ -36,7 +36,13 @@ class WrapperDataset(datasets.DatasetSource):
         if self._timestamps is not None:
             return self._timestamps
         elif hasattr(self.wrapped, "timestamps"):
-            return self.wrapped.timestamps
+            ts = self.wrapped.timestamps
+            if isinstance(ts, np.ndarray) or isinstance(ts, torch.Tensor):
+                return ts
+            elif hasattr(ts, "__getitem__"):
+                return ts[:]
+            else:
+                raise NotImplementedError
         else:
             raise NotImplementedError
     

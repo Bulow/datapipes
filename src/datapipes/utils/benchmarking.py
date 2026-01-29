@@ -43,11 +43,11 @@ def human_readable_time(secs: float) -> str:
     h, rem = divmod(int(secs), 3600)
     m, s = divmod(rem, 60)
     if h:
-        return f"{h}h {m}m {s}.{ms:02d}s"
+        return f"{h}h {m}m {s}.{ms:03d}s"
     elif m:
-        return f"{m}m {s}.{ms:02d}s"
+        return f"{m}m {s}.{ms:03d}s"
     else:
-        return f"{s}.{ms:02d}s"
+        return f"{s}.{ms:03d}s"
 
 def human_readable_time_us(us: float) -> str:
     rem_us = us % 1_000

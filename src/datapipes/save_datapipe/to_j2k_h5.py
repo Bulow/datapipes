@@ -139,8 +139,8 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: in
                 yield batch, encoded
                 
 
-        for batch, encoded in progress_bar(PrefetchIterator(encoded_frames_it()), len(dp), f"Converting file {dp.path.name}"):
-            print(f"{batch = }, {type(batch) = }")
+        for batch, encoded in progress_bar(PrefetchIterator(encoded_frames_it()), total=len(dp), desc=f"Converting file {dp.path.name}"):
+            # print(f"{batch = }, {type(batch) = }")
             source_hasher.ingest_frames(batch)
 
             # Encode batch

@@ -41,7 +41,7 @@ _dataset_extensions = {
     "*.mp4": DatasetVideoFile,
 }
 
-# _extensions_from_dataset_class = {ds: ext for ext, ds in _dataset_extensions.items()}
+_extensions_from_dataset_class = {ds: ext[1:] for ext, ds in _dataset_extensions.items()}
 
 
 

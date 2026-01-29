@@ -58,19 +58,21 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
 class CachedTimestampList(Sequence):
     def __init__(self, frame_count):
         self.timestamps = np.zeros((frame_count), dtype=np.uint64)
-        self.timestamps_read = np.zeros((frame_count), dtype=np.uint8)
+        self.timestamps_read = np.zeros((frame_count), dtype=np.bool)
 
     def __len__(self):
         return len(self.timestamps)
 
     def __getitem__(self, index):
-        if np.any(self.timestamps_read[index] == 0):
+        # print(self.timestamps_read[index])
+        print(f"[{", ".join([str(int(d)) for d in self.timestamps_read[index]])}]")
+        if not np.all(self.timestamps_read[index]):
             raise BufferError("All frames must be read before accessing timestamps, since RLS uses a discontiguous array-of-structs memory format")
         return self.timestamps[index]
     
     def __setitem__(self, index, value):
         self.timestamps[index] = value
-        self.timestamps_read[index] = 1
+        self.timestamps_read[index] = True
 
     
 
