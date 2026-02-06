@@ -10,7 +10,7 @@ import torch
 from datapipes.ops import Ops
 import einops
 import numpy as np
-
+from typing import Literal
 from datapipes.plotting import plots, map01
 
 def torch_float_1hw_to_np_uint8_hw3(frame: torch.Tensor) -> torch.Tensor:
@@ -28,7 +28,7 @@ def create_detector(num_hands: int=2):
         detector = vision.HandLandmarker.create_from_options(options)
         return detector
 
-detector = create_detector(num_hands=2)
+detector = create_detector(num_hands=2) # TODO: per dataset instance as detector keeps state
 
 
 
@@ -51,7 +51,22 @@ def detect_landmarks(img_data: torch.Tensor) -> torch.Tensor:
     return detection_result
 
 
-def landmarks_to_tensor(landmarks, hand_idx: int=0) -> torch.Tensor:
-    return torch.Tensor([(mark.x, mark.y) for mark in landmarks.hand_landmarks[hand_idx]])
+
+def landmarks_to_tensor(landmarks, img_shape: torch.Size, hand_idx: int=0, coord_type: Literal["px", "normalized"]="px") -> torch.Tensor:
+    # print(f"landmarks_to_tensor >")
+    # import rich
+    # rich.print(landmarks)
+
+    # # hand_world_landmarks
+    normalized_landmarks = torch.Tensor([(mark.x, mark.y) for mark in landmarks.hand_landmarks[hand_idx]])
+    match coord_type:
+        case "px":
+            h, w = img_shape[-2:]
+            return normalized_landmarks * torch.tensor((w, h), device=normalized_landmarks.device)
+        case "normalized":
+            return normalized_landmarks
+        case _:
+            raise ValueError(f"Unrecognized coord_type: {coord_type}")    
+
 
 

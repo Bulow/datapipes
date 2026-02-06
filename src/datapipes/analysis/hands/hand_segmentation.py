@@ -72,6 +72,8 @@ def _clean_mask(mask: torch.Tensor) -> torch.Tensor:
 
     t[_m] = _o[_m].to(torch.uint8)
     
+    # smoothed = kornia.filters.box_blur(t.to(torch.float32), kernel_size=7, separable=True, border_type="constant")
+    # t = (smoothed > 0.5).to(torch.uint8)
     return t
 
 def get_hand_mask(frames: torch.Tensor) -> torch.Tensor:
