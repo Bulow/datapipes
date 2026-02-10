@@ -70,19 +70,7 @@ class HandSegments:
         return einops.rearrange(torch.tensor(self.biases, device="cuda", requires_grad=False), "c -> c 1 1 1")
     
     def get_name_to_value_dict(self) -> Dict[str, int]:
-        return {name:i for i, name in enumerate(self.segs.keys())}
-
-
-    # def set_weight(self, w: float):
-    #     self._current_weight = w
-
-    # def set_bias(self, b: float):
-    #     self._current_bias = b
-    
-# weights = 
-    # biases = 
-    # names = 
-    # segments = 
+        return {"background": 0} | {name:i + 1 for i, name in enumerate(self.segs.keys())}
 
 def smooth_transition(segs_to: Dict[str, torch.Tensor], segs_from: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     keys_to = tuple(s for s in segs_to.keys())
@@ -92,8 +80,6 @@ def smooth_transition(segs_to: Dict[str, torch.Tensor], segs_from: Dict[str, tor
     first = segs_from[keys_from[0]]
 
     common_point = last[1]
-    # print(f"{keys_to[-1] = }, {keys_from[0] = }")
-    # print(f"{last = }, {first = }")
     assert torch.allclose(common_point, first[0]), "last and first points must be the same"
 
     to_dir = last[0] - common_point
@@ -290,7 +276,7 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     )
 
     # Wrist
-    with segs.surface_affinity(w=0.4, b=0.0):
+    with segs.surface_affinity(w=0.7, b=0.1):
 
         segs.add(spread_clones(smooth_transition(thumb_wrist, thumb_metacarp), spread_factor=palm_spread_factor))
 
@@ -304,7 +290,8 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     # segs.add(create_subsegments(2, L.thumb_cmc, L.tabertier))
 
     # Tabertier
-    with segs.surface_affinity(w=1.0, b=0.0):
+    with segs.surface_affinity(w=0.7, b=0.1):
+
         segs.add(spread_clones(create_subsegments(2, L.tabertier, L.tabertier_arc, base_name="tabertier"), n_symmetric_clones=1, spread_factor=10))
     
     thumb_finger = ({}

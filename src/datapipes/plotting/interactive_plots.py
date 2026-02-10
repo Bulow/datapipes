@@ -112,6 +112,10 @@ def imshow_region_mask(
     return fig.update_layout(dragmode='pan', hovermode='closest', margin=dict(l=0, r=0, t=0, b=0))
 
 def create_standalone_html_plot(fig: go.Figure, out_path: Path|str):
+    out_path = Path(out_path)
+    if not out_path.parent.exists():
+        out_path.parent.mkdir(parents=True)
+        
     plotly.io.write_html(
         fig=fig.update_layout(dragmode='pan', hovermode='closest', margin=dict(l=0, r=0, t=0, b=0)),
         file=out_path,

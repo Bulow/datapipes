@@ -373,6 +373,16 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, hand_segme
     return out
 
 # , hand_name: Literal["Right", "Left"]
+from dataclasses import dataclass
+
+@dataclass(frozen=True, kw_only=True)
+class SegmentationResult:
+    segmentation_mask: torch.Tensor
+    bboxes: Dict[str, Dict[str, torch.Tensor]]
+    segmentation_masks_by_hand: Dict[str, torch.Tensor]
+    hand_segments: Dict[str, segments.HandSegments]
+
+
 @torch.no_grad
 def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True) -> Tuple[torch.Tensor, Dict[str, int], Dict[Literal["left", "right"], torch.Tensor]]:
     """
@@ -447,9 +457,12 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         anatomy_maps[hand_name] = anatomy
         # break # TODO: For debugging purposes. Remove.
 
-    # import rich
-    # rich.print(get_region_name_to_value_dict())
-    return out_seg_mask, bboxes, anatomy_maps
+    return SegmentationResult(
+        segmentation_mask=out_seg_mask,
+        bboxes=bboxes,
+        segmentation_masks_by_hand=anatomy_maps,
+        hand_segments=hands_segments_px
+    )
 
 def compute_anatomical_markers(image: torch.Tensor, mode: Literal["single_flat_dict", "dict_per_hand"]="dict_per_hand") -> Dict[str, torch.Tensor]|Dict[str, Dict[str, torch.Tensor]]:
     landmarks = hand_landmarks.detect_landmarks(image)
