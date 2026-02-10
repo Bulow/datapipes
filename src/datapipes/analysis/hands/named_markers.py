@@ -4,7 +4,7 @@ from enum import StrEnum, auto
 from typing import Dict, Any, Callable, Tuple, List, Optional, Iterable
 import rich
 
-from datapipes.analysis.hands.geometry import avg_dir, normalize, project_marker_along_segment, project_point_onto_line, vec_len, get_transition_points_along_line
+from datapipes.analysis.hands.geometry import avg_dir, normalize, project_marker_along_segment, project_point_onto_line, vec_len, get_transition_points_along_line, get_closest_mask_boundaries_along_line, center_point_in_mask_boundaries, constrain_point_to_line_midpoint_coincident
 
 mediapipe_landmarks = dict(
     wrist = 0,
@@ -54,6 +54,10 @@ class L(StrEnum):
     pinky_tip = auto()
 
     # Custom
+
+    corrected_middle_mcp = auto()
+    corrected_ring_mcp = auto()
+
     radius = auto()
     ulna = auto()
     index_mc_mid = auto()
@@ -103,6 +107,19 @@ class L(StrEnum):
     distal_arm = auto()
     distal_arm_radial = auto()
     distal_arm_ulnar = auto()
+
+    arm_spacer_thumb_proximal = auto()
+    arm_spacer_index_proximal = auto()
+    arm_spacer_middle_proximal = auto()
+    arm_spacer_ring_proximal = auto()
+    arm_spacer_pinky_proximal = auto()
+
+    arm_spacer_thumb_distal = auto()
+    arm_spacer_index_distal = auto()
+    arm_spacer_middle_distal = auto()
+    arm_spacer_ring_distal = auto()
+    arm_spacer_pinky_distal = auto()
+    
     
 
 def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[Dict[str, torch.Tensor], Dict[str, int]]: 
@@ -111,6 +128,115 @@ def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[
     markers: Dict[str, torch.Tensor] = {}
     for name, idx in mediapipe_landmarks.items():
         markers[name] = landmarks_px[idx]
+
+    # ------------------------
+    # Mask based corrections
+    # ------------------------
+
+    tip_strength = 1.0
+    dip_strength = 1.0
+    pip_strength = 1.0
+
+    # TIP
+    markers[L.thumb_tip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.thumb_tip],
+        point_in_segment=markers[L.thumb_ip],
+        mask=mask,
+        strength=tip_strength
+    )
+        
+    markers[L.index_tip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.index_tip],
+        point_in_segment=markers[L.index_dip],
+        mask=mask,
+        strength=tip_strength
+    )
+        
+    markers[L.middle_tip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.middle_tip],
+        point_in_segment=markers[L.middle_dip],
+        mask=mask,
+        strength=tip_strength
+    )
+        
+    markers[L.ring_tip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.ring_tip],
+        point_in_segment=markers[L.ring_dip],
+        mask=mask,
+        strength=tip_strength
+    )
+        
+    markers[L.pinky_tip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.pinky_tip],
+        point_in_segment=markers[L.pinky_dip],
+        mask=mask,
+        strength=tip_strength
+    )
+
+    # DIP
+    markers[L.thumb_ip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.thumb_ip],
+        point_in_segment=markers[L.thumb_mcp],
+        mask=mask,
+        strength=dip_strength
+    )
+        
+    markers[L.index_dip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.index_dip],
+        point_in_segment=markers[L.index_mcp],
+        mask=mask,
+        strength=dip_strength
+    )
+        
+    markers[L.middle_dip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.middle_dip],
+        point_in_segment=markers[L.middle_mcp],
+        mask=mask,
+        strength=dip_strength
+    )
+        
+    markers[L.ring_dip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.ring_dip],
+        point_in_segment=markers[L.ring_mcp],
+        mask=mask,
+        strength=dip_strength
+    )
+        
+    markers[L.pinky_dip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.pinky_dip],
+        point_in_segment=markers[L.pinky_mcp],
+        mask=mask,
+        strength=dip_strength
+    )
+
+    # PIP        
+    markers[L.index_pip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.index_pip],
+        point_in_segment=markers[L.index_dip],
+        mask=mask,
+        strength=pip_strength
+    )
+        
+    markers[L.middle_pip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.middle_pip],
+        point_in_segment=markers[L.middle_dip],
+        mask=mask,
+        strength=pip_strength
+    )
+        
+    markers[L.ring_pip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.ring_pip],
+        point_in_segment=markers[L.ring_dip],
+        mask=mask,
+        strength=pip_strength
+    )
+        
+    markers[L.pinky_pip] = center_point_in_mask_boundaries(
+        point_to_center=markers[L.pinky_pip],
+        point_in_segment=markers[L.pinky_dip],
+        mask=mask,
+        strength=pip_strength
+    )
 
     # ------------------------
     # Crosslinks
@@ -122,9 +248,25 @@ def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[
     markers[L.inter_pip_middle_ring] = 0.5 * (markers[L.middle_pip] + markers[L.ring_pip])
     markers[L.inter_pip_ring_pinky] = 0.5 * (markers[L.ring_pip] + markers[L.pinky_pip])
 
+    # markers[L.corrected_middle_mcp] = 0.5 * (markers[L.inter_mcp_index_middle] + markers[L.inter_mcp_middle_ring])
+    # markers[L.corrected_ring_mcp] = 0.5 * (markers[L.inter_mcp_middle_ring] + markers[L.inter_mcp_ring_pinky])
+
+    # markers[L.middle_mcp] = constrain_point_to_line_midpoint_coincident(point=markers[L.middle_mcp], line_start=markers[L.inter_mcp_index_middle], line_end=markers[L.inter_mcp_middle_ring])
+    # markers[L.ring_mcp] = constrain_point_to_line_midpoint_coincident(point=markers[L.ring_mcp], line_start=markers[L.inter_mcp_middle_ring], line_end=markers[L.inter_mcp_ring_pinky])
+
+    # markers[L.inter_mcp_index_middle] = 0.5 * (markers[L.index_mcp] + markers[L.middle_mcp])
+    # markers[L.inter_mcp_middle_ring] = 0.5 * (markers[L.middle_mcp] + markers[L.ring_mcp])
+    # markers[L.inter_mcp_ring_pinky] = 0.5 * (markers[L.ring_mcp] + markers[L.pinky_mcp])
+    # markers[L.inter_pip_index_middle] = 0.5 * (markers[L.index_pip] + markers[L.middle_pip])
+    # markers[L.inter_pip_middle_ring] = 0.5 * (markers[L.middle_pip] + markers[L.ring_pip])
+    # markers[L.inter_pip_ring_pinky] = 0.5 * (markers[L.ring_pip] + markers[L.pinky_pip])
+
     # ------------------------
     # Tips
-    # ------------------------
+    # -------------------------
+
+    
+
     tip_extension_factor = 1.5
     markers[L.thumb_extended_tip] = markers[L.thumb_ip] + tip_extension_factor * (markers[L.thumb_tip] - markers[L.thumb_ip])
     markers[L.index_extended_tip] = markers[L.index_dip] + tip_extension_factor * (markers[L.index_tip] - markers[L.index_dip])
@@ -250,6 +392,34 @@ def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[
         vec=markers[L.middle_vantage_wrist] - markers[L.thumb_cmc], 
         dir=markers[L.tabertier] - markers[L.tabertier_arc]
     )
+
+
+    padding = 0.1
+    fracs = torch.linspace(start=padding, end=1 - padding, steps=5)
+    
+    for i, name in enumerate((L.arm_spacer_thumb_proximal, L.arm_spacer_index_proximal, L.arm_spacer_middle_proximal, L.arm_spacer_ring_proximal, L.arm_spacer_pinky_proximal)):
+        markers[name] = project_marker_along_segment(
+            start=markers[L.proximal_arm_radial],
+            stop=markers[L.proximal_arm_ulnar],
+            frac=fracs[i]
+        )
+
+    for i, name in enumerate((L.arm_spacer_thumb_distal, L.arm_spacer_index_distal, L.arm_spacer_middle_distal, L.arm_spacer_ring_distal, L.arm_spacer_pinky_distal)):
+        markers[name] = project_marker_along_segment(
+            start=markers[L.distal_arm_radial],
+            stop=markers[L.distal_arm_ulnar],
+            frac=fracs[i]
+        )
+
+    markers[L.thumb_vantage_wrist] = project_point_onto_line(origin=markers[L.arm_spacer_thumb_proximal], vec=markers[L.thumb_vantage_wrist] - markers[L.arm_spacer_thumb_proximal], dir=markers[L.arm_spacer_thumb_distal] - markers[L.arm_spacer_thumb_proximal])
+
+    markers[L.index_vantage_wrist] = project_point_onto_line(origin=markers[L.arm_spacer_index_proximal], vec=markers[L.index_vantage_wrist] - markers[L.arm_spacer_index_proximal], dir=markers[L.arm_spacer_index_distal] - markers[L.arm_spacer_index_proximal])
+
+    markers[L.middle_vantage_wrist] = project_point_onto_line(origin=markers[L.arm_spacer_middle_proximal], vec=markers[L.middle_vantage_wrist] - markers[L.arm_spacer_middle_proximal], dir=markers[L.arm_spacer_middle_distal] - markers[L.arm_spacer_middle_proximal])
+
+    markers[L.ring_vantage_wrist] = project_point_onto_line(origin=markers[L.arm_spacer_ring_proximal], vec=markers[L.ring_vantage_wrist] - markers[L.arm_spacer_ring_proximal], dir=markers[L.arm_spacer_ring_distal] - markers[L.arm_spacer_ring_proximal])
+
+    markers[L.pinky_vantage_wrist] = project_point_onto_line(origin=markers[L.arm_spacer_pinky_proximal], vec=markers[L.pinky_vantage_wrist] - markers[L.arm_spacer_pinky_proximal], dir=markers[L.arm_spacer_pinky_distal] - markers[L.arm_spacer_pinky_proximal])
 
     # tpoints = get_transition_points_along_line(mask[0], start_point=markers[L.proximal_arm_ulnar], end_point=markers[L.proximal_arm_radial])
 

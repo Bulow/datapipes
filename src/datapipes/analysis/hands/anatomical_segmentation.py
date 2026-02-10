@@ -122,7 +122,7 @@ def _get_point_to_segment_distance(P, A, B, gradient: list[torch.Tensor], eps=1e
 def _get_line_segment_distances(
     mask: torch.Tensor,
     gradient: torch.Tensor,
-    segments: torch.Tensor # (segments start_stop=2 coord2D=2)
+    hand_segments: segments.HandSegments # (segments start_stop=2 coord2D=2)
 ):
     """
     mask:      [H,W] bool or 0/1 or 0..255 tensor (on CPU or CUDA)
@@ -145,7 +145,7 @@ def _get_line_segment_distances(
     g_mask = mask_bool #einops.repeat(mask_bool, "h w -> 2 h w")
     gx, gy = gradient[0, ...][g_mask], gradient[1, ...][g_mask]
 
-    segs = segments.to("cuda") # TODO: remove
+    segs = hand_segments.get_segments_tensor().to("cuda")
     # segs = hand_anatomy.build_segments(lm_px)
     A = segs[0]
     B = segs[1]
@@ -262,7 +262,7 @@ def _soft_argmin(t: torch.Tensor) -> torch.Tensor:
 _debug_distances: torch.Tensor
 _debug_dict: Dict = {}
 
-def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: torch.Tensor, use_surface_optimization: bool=True) -> torch.Tensor:
+def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, hand_segments: segments.HandSegments, use_surface_optimization: bool=True) -> torch.Tensor:
 
     # gradient = kornia.filters.box_blur(input=gradient.unsqueeze(0), kernel_size=5, separable=True)[0]
     
@@ -270,7 +270,7 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: 
     dists, dot_grad = _get_line_segment_distances(
         mask=_m[0],
         gradient=_gradient,
-        segments=segments
+        hand_segments=hand_segments
     )
 
     # Reconstruct maps from raw 1D pixels
@@ -297,27 +297,19 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: 
     # dot_grad_maps = kornia.enhance.equalize(map01(dot_grad_maps))
     dot_grad_maps[neg] *= -1
 
+    # print(f"{hand_segments.get_weights_tensor().shape = }, {dot_grad_maps.shape = }")
+    # Adjust by surface affinity
+    dot_grad_maps = (dot_grad_maps * hand_segments.get_weights_tensor()) + hand_segments.get_biases_tensor()
+
+    # dot_grad_maps[97:] += 0.3
+    # # dot_grad_maps[67:] *= 0.5
+
+    # dot_grad_maps[:97] += 0.0
+    # dot_grad_maps[:97] *= 0.2
+
     
-
-    # Attenuate gradients of non digit segments
-    # dot_grad_maps[17:] += 0.1
-    # dot_grad_maps[:13] -= 0.1
-    # dot_grad_maps[:3] += 0.3
-    # dot_grad_maps[:3] *= 8
-    dot_grad_maps[67:] += 0.1
-    # dot_grad_maps[67:] *= 0.5
-
-    dot_grad_maps[:67] += 0.3
-    dot_grad_maps[:67] *= 0.2
-
-    # dot_grad_maps[-3:] += 0.1
-
-    # d = {k:v - 1 for k, v in get_region_name_to_value_dict().items()}
-    # dot_grad_maps[d["wrist->radius"]] *= 2
-    # dot_grad_maps[d["wrist->ulna"]] *= 2
-    # dot_grad_maps[d["thumb_mcp->thumb_ip"]] -= 0.3
-
     _debug_dict["dot_grad_maps"] = dot_grad_maps
+    _debug_dict["hand_segments"] = hand_segments
 
     # Penalize distances where the gradient points away from each line segment
     _d, _g = plots.crop_to_common_size(dist_maps, dot_grad_maps)
@@ -328,18 +320,31 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, segments: 
 
     neg_g = torch.clone(_g)
     neg_g[_g > 0] = 0
+    
 
     # print("pos, neg")
     # plot(pos_g[64], neg_g[64])
 
     # delta_d = map01(_d) - (map01(_g) * 1)
-    delta_d = map01(_d) - ((map01(map01(-_d).square()) * (map01(pos_g))) ** 2) - ((map01(map01(-_d).square()) * (map01(neg_g))) ** 2)
+    # delta_d = map01(_d) + (
+    #     (
+    #         map01(map01(-_d).square()) * (map01(pos_g))
+    #     ).square()
+    # ) - (
+    #     (
+    #         map01(map01(-_d).square()) * (map01(neg_g))
+    #     ).square()
+    # )
+
+    
     # delta_d = map01(_d) - ((map01(map01(-_d).square()) * (map01(pos_g) * (-map01(neg_g)))) ** 2)
+    delta_d = map01(_d) - ((map01(map01(-_d).square()) * (map01(pos_g))) ** 2) - ((map01(map01(-_d).square()) * (map01(neg_g))) ** 2)
 
     # delta_d = _d * (1 - _g)
 
     # plot(dot_grad_maps[64], delta_d[64], map01(-_d).square()[64], mode="vertical")
-
+    _debug_dict["locals"] = locals()
+    
     if use_surface_optimization:
         adjusted_dists = delta_d
     else:
@@ -390,8 +395,9 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
 
     # hands_segments_px = {hand_name:hand_anatomy.build_segments(normalized_landmarks=normalized_landmarks_on_hand, mask=mask).to("cuda") for hand_name, normalized_landmarks_on_hand in hands_landmarks_normalized.items()}
 
-    hands_segments_px = {hand_name:segments.build_segments(landmarks_px=px_landmarks_on_hand, mask=mask).to("cuda") for hand_name, px_landmarks_on_hand in hands_landmarks_px.items()}
+    hands_segments_px: Dict[str, segments.HandSegments] = {hand_name:segments.build_segments(landmarks_px=px_landmarks_on_hand, mask=mask) for hand_name, px_landmarks_on_hand in hands_landmarks_px.items()}
 
+    # hands_segments_px = {hand_name:segments_hand for hand_name, segments_hand in segments}
 
     # Crop to bbox of chosen hand
     # chosen_segments = hands_segments_px[hand_name]
@@ -400,7 +406,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
     out_seg_mask = torch.zeros_like(mask).to("cuda")
     for hand_name, chosen_segments in hands_segments_px.items():
         H, W = img_data.shape[-2:]
-        coords = einops.rearrange(chosen_segments, "e n c -> (e n) c") # coords = [x, y]
+        coords = einops.rearrange(chosen_segments.get_segments_tensor(), "e n c -> (e n) c") # coords = [x, y]
 
         min_coord = coords.min(dim=0).values
         max_coord = coords.max(dim=0).values
@@ -431,10 +437,11 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         cropped_mask = mask[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
         cropped_gradients = gradient[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
 
-        relative_coords = coords - min_coord
-        relative_segments = einops.rearrange(relative_coords, "(e n) c -> e n c", e=2)
-        _debug_dict["mask"] = cropped_mask[:, :450, :]
-        anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, segments=relative_segments, use_surface_optimization=use_surface_optimization)
+        # relative_coords = coords - min_coord
+        # relative_segments = einops.rearrange(relative_coords, "(e n) c -> e n c", e=2)
+        relative_segments = chosen_segments.relative_to(origin=min_coord)
+        # _debug_dict["mask"] = cropped_mask[:, :450, :]
+        anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, hand_segments=relative_segments, use_surface_optimization=use_surface_optimization)
         # print(anatomy.shape)
         out_seg_mask[:, min_h:max_h, min_w:max_w] = anatomy
         anatomy_maps[hand_name] = anatomy

@@ -26,7 +26,12 @@ def project_point_onto_line(origin: torch.Tensor, vec: torch.Tensor, dir: torch.
     dir = normalize(dir)
     return origin + ((dir * vec).sum(-1) * dir)
 
+def constrain_point_to_line_midpoint_coincident(point: torch.Tensor, line_start: torch.Tensor, line_end: torch.Tensor) -> torch.Tensor:
+    line_midpoint = 0.5 * (line_start + line_end)
+    point_projected_to_line = project_point_onto_line(origin=line_start, vec=point - line_start, dir=line_end - line_start)
 
+    delta = point_projected_to_line - line_midpoint
+    return point + delta
 
 
 def sample_line(img: torch.Tensor, start_point: torch.Tensor, end_point: torch.Tensor) -> torch.Tensor:
@@ -86,18 +91,62 @@ def sample_line(img: torch.Tensor, start_point: torch.Tensor, end_point: torch.T
     return line
 
 def get_transitions(sampled_line: torch.Tensor):
-        change = sampled_line[1:] ^ sampled_line[:-1]
-        idx = torch.nonzero(change, as_tuple=False).flatten() + 1
-        return idx
+    change = sampled_line[1:] ^ sampled_line[:-1]
+    idx = torch.nonzero(change, as_tuple=False).flatten() + 1
+    return idx
     
     
 
 def get_transition_points_along_line(img: torch.Tensor, start_point: torch.Tensor, end_point: torch.Tensor) -> torch.Tensor:
-        # if start_point.max() <= 1.0 and end_point.max() <= 1.0:
-        #     px_scale = torch.tensor((img.shape[-1], img.shape[-2]), device=start_point.device)
-        #     start_point *= px_scale
-        #     end_point *= px_scale
-        line_px = sample_line(img=img, start_point=start_point, end_point=end_point).to(torch.uint8)
-        transition_fracs = get_transitions(line_px) / len(line_px)
-        points = tuple(project_marker_along_segment(start=start_point, stop=end_point, frac=frac) for frac in transition_fracs)
-        return points
+    # if start_point.max() <= 1.0 and end_point.max() <= 1.0:
+    #     px_scale = torch.tensor((img.shape[-1], img.shape[-2]), device=start_point.device)
+    #     start_point *= px_scale
+    #     end_point *= px_scale
+    line_px = sample_line(img=img, start_point=start_point, end_point=end_point).to(torch.uint8)
+    transition_fracs = get_transitions(line_px) / len(line_px)
+    points = tuple(project_marker_along_segment(start=start_point, stop=end_point, frac=frac) for frac in transition_fracs)
+    return points
+
+
+def get_closest_mask_boundaries_along_line(img: torch.Tensor, start_point: torch.Tensor, end_point: torch.Tensor, origin_point_frac: float) -> torch.Tensor:
+    # if start_point.max() <= 1.0 and end_point.max() <= 1.0:
+    #     px_scale = torch.tensor((img.shape[-1], img.shape[-2]), device=start_point.device)
+    #     start_point *= px_scale
+    #     end_point *= px_scale
+    line_px = sample_line(img=img, start_point=start_point, end_point=end_point).to(torch.uint8)
+    transition_fracs = get_transitions(line_px) / len(line_px)
+    
+    try:
+        lower = transition_fracs[transition_fracs < origin_point_frac].max()
+        upper = transition_fracs[transition_fracs > origin_point_frac].min()
+    except RuntimeError:
+        origin = start_point + (origin_point_frac * (end_point - start_point))
+        return tuple((origin, origin))
+
+    points = tuple(project_marker_along_segment(start=start_point, stop=end_point, frac=frac) for frac in (lower, upper))
+    return points
+
+def center_point_in_mask_boundaries(point_to_center: torch.Tensor, point_in_segment: torch.Tensor, mask: torch.Tensor, strength: float=1.0) -> torch.Tensor:
+    seg = point_in_segment - point_to_center
+    normal = torch.stack((-seg[1], seg[0]))
+    
+    boundary_points = get_closest_mask_boundaries_along_line(
+        img=mask[0],
+        start_point=point_to_center + normal,
+        end_point=point_to_center - normal,
+        origin_point_frac=0.5
+    )
+
+    if len(boundary_points) >= 2:
+        # Successfully found borders
+        centered_point = torch.stack(boundary_points).sum(0) * 0.5
+
+        # Abort if centered point is too far from original. This could e.g. mean that one of the border borders we found belongs to a different finger
+        if vec_len(centered_point - point_to_center) > (vec_len(point_in_segment - point_to_center) * 0.3):
+            return point_to_center
+
+        return (centered_point * strength) + (point_to_center * (1 - strength))
+    else:
+        # Fallback; return original point
+        return point_to_center
+
