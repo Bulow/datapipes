@@ -60,7 +60,7 @@ class DataPipe(DatasetSource):
     @property
     def dtype(self):
         if self._dtype is None:
-            self._dtype = self[0, 0, 0, 0].dtype
+            self._dtype = self[0].dtype
         return self._dtype
     
     @property

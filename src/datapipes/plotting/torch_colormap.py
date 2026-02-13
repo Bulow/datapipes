@@ -48,6 +48,11 @@ class TorchColormap:
 
     @torch.no_grad
     def __call__(self, t: torch.Tensor, vmin: float=None, vmax: float=None):
+        if t.is_meta:
+            # shape = list(t.shape)
+            # shape[1] = 3
+            return torch.stack([t] * 3, dim=1)
+        
         in_dim = t.ndim
         if t.ndim == 2:
              t = t.unsqueeze(0)

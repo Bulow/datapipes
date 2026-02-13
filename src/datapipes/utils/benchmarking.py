@@ -31,6 +31,9 @@ class MultiBlockTimer:
         # Do not suppress exceptions
         return False
     
+    def __str__(self) -> str:
+        return human_readable_time(self.total)
+    
 def human_readable_filesize(size_bytes: int, dp=2):
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size_bytes < 1024.0:

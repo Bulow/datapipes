@@ -11,6 +11,7 @@ from typing import Literal, Callable, Iterable, Iterator, Any, Optional
 import datapipes
 from tqdm import tqdm
 from datapipes.utils import SimpleTqdm
+from datapipes.utils.slicer import _Slicer
 
 def get_progress_bar() -> Callable:
     if datapipes.utils.running_under_matlab():
@@ -97,6 +98,16 @@ def subbatch(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callab
         yield batch
 
 def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, Optional[int], str], Iterator] = partial(tqdm, leave=False), destination_device="cpu") -> torch.Tensor:
+    normalized_idx: slice = _Slicer.from_shape(shape=dp.shape)[idx]
+    
+    shape = tuple((slc.stop - slc.start) // slc.step for slc in normalized_idx)
+    # print(f"{shape = }")
+    out = torch.empty(size=shape, dtype=dp.dtype, device=destination_device)
+    for batch, batch_idx in subbatch_emit_indices(dp=dp, idx=idx, batch_size=batch_size, progress_bar=progress_bar):
+        out[batch_idx] = batch
+    return out
+
+def list_accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, Optional[int], str], Iterator] = partial(tqdm, leave=False), destination_device="cpu") -> torch.Tensor:
     batches = [] # TODO: Write directly to an empty tensor to avoid cat
     for batch in subbatch(dp=dp, idx=idx, batch_size=batch_size, progress_bar=progress_bar):
         batches.append(batch.to("cpu", non_blocking=True))

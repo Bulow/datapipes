@@ -15,13 +15,6 @@ from contextlib import contextmanager
 import plotly.graph_objects as go
 import plotly.express as px
 
-@dataclass(frozen=True)
-class Segment:
-    seg: torch.Tensor
-    weight: float = field(default=1.0, kw_only=True)  
-    bias: float = field(default=0.0, kw_only=True)
-
-
 class HandSegments:
 
     def __init__(self):
@@ -112,19 +105,6 @@ def create_subsegments_raw(n_subsegments: int, start_point: torch.Tensor, stop_p
 def create_subsegments_idx(markers_px, n_subsegments: int, start_idx: int, stop_idx: int, base_name: str="segment", skip_factor: int=1, skip_offset_frac: float=0) -> Dict[str, torch.Tensor]:
         return create_subsegments_raw(n_subsegments=n_subsegments, start_point=markers_px[start_idx], stop_point=markers_px[stop_idx], base_name=base_name, skip_factor=skip_factor, skip_offset_frac=skip_offset_frac)
 
-# def crosslink(first_seg_list: List[torch.Tensor], second_seg_list: List[torch.Tensor]) -> List[torch.Tensor]:
-#     # assert len(first_seg_list) == len(second_seg_list)
-#     # return [torch.stack((f[0], s[0]), dim=-1) for f, s in zip(first_seg_list, second_seg_list)]
-#     segs = []
-#     for f, s in zip(first_seg_list, second_seg_list):
-#         # if f is None or s is None:
-#         #     break
-#         # print(f"{f[0] = }, {s[0] = }")
-#         link = s[0] - f[0]
-#         margin = 0.15
-#         segs.append(torch.stack((f[0] + (link * margin), s[0] - (link * margin))))
-#     return segs
-
 def spread_clones_in_dir(thumb_dir_sign: int, seg_dict: Dict[str, torch.Tensor], n_symmetric_clones: int=1, spread_factor: float=1.0, include_original: bool=False, join_start: bool = False, join_end: bool = False) -> Dict[str, torch.Tensor]:
     segs = []
     names = []
@@ -157,18 +137,19 @@ def spread_clones_in_dir(thumb_dir_sign: int, seg_dict: Dict[str, torch.Tensor],
 
 
 
-def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def build_segments(markers_px: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """
     out: torch.Tensor (segment start_stop coord2D)
     """
 
+    # -------------------------------
+    # Setup
+    # -------------------------------
     _, h, w = mask.shape
-    # print(f"{h = }, {w = }")
-    landmarks_px = landmarks_px.to(device="cuda", dtype=torch.float32)
-    markers_px, markers_idx = add_custom_markers(landmarks_px, mask=mask)
+    # landmarks_px = landmarks_px.to(device="cuda", dtype=torch.float32)
+    # markers_px, markers_idx = add_custom_markers(landmarks_px, mask=mask)
 
     segs = HandSegments()
-    # segs = []
     
     principal_direction = normalize(markers_px[L.middle_mcp] - markers_px[L.wrist])
     thumb_direction = normalize(markers_px[L.index_mcp] - markers_px[L.middle_mcp])
@@ -185,14 +166,16 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
     create_subsegments = functools.partial(create_subsegments_idx, markers_px)
     spread_clones = functools.partial(spread_clones_in_dir, thumb_dir_sign)
 
-    
-    
-
     # print(f"{principal_direction = }")
     # print(f"{thumb_direction = }")
     # print(f"{thumb_dir_sign = }")
     # print(f"{hand_scale_factor = }")
 
+    # -------------------------------
+    # Config
+    # -------------------------------
+
+    thumb_metacarp_sub_seg_n = 4
     palm_sub_seg_n = 5
     palm_skip_factor = 1
     palm_skip_offset_frac = 0.0
@@ -203,13 +186,16 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
 
     arm_sub_seg_n = 5
 
+    # -------------------------------
+    # Metacarps
+    # -------------------------------
     index_metacarp = create_subsegments(palm_sub_seg_n, L.index_vantage_wrist, L.index_mcp, base_name="index_metacarp", skip_factor=palm_skip_factor, skip_offset_frac=0)
     middle_metacarp = create_subsegments(palm_sub_seg_n, L.middle_vantage_wrist, L.middle_mcp, base_name="middle_metacarp", skip_factor=palm_skip_factor, skip_offset_frac=palm_skip_offset_frac)
     ring_metacarp = (create_subsegments(palm_sub_seg_n, L.ring_vantage_wrist, L.ring_mcp, base_name="ring_metacarp", skip_factor=palm_skip_factor, skip_offset_frac=0))
     pinky_metacarp = (create_subsegments(palm_sub_seg_n, L.pinky_vantage_wrist, L.pinky_mcp, base_name="pinky_metacarp", skip_factor=palm_skip_factor, skip_offset_frac=palm_skip_offset_frac))
     
     thumb_metacarp = create_subsegments_raw(
-        4, 
+        thumb_metacarp_sub_seg_n, 
         markers_px[L.thumb_vantage_wrist], 
         markers_px[L.thumb_mcp], 
         base_name="thumb_metacarp"
@@ -217,27 +203,10 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
 
     palm_spread_factor = 1
 
-    
-    
-    # Metacarps
-    # with segs.surface_affinity(w=0.4, b=0.0):
-        # segs.add(spread_clones(index_metacarp, spread_factor=palm_spread_factor))
-        # segs.add(spread_clones(middle_metacarp, spread_factor=palm_spread_factor))
-        # segs.add(spread_clones(ring_metacarp, spread_factor=palm_spread_factor))
-        # segs.add(spread_clones(pinky_metacarp, spread_factor=palm_spread_factor))
+    # -------------------------------
+    # Wrist
+    # -------------------------------
 
-        # segs.add(spread_clones(), n_symmetric_clones=1, spread_factor=10, join_start=True, join_end=True)
-
-
-    # arm_dir = normalize(markers_px[L.proximal_arm] - markers_px[L.distal_arm])
-
-    # radial_arm_dir = normalize(markers_px[L.proximal_arm_radial] - markers_px[L.distal_arm_radial])
-
-    # ulnar_arm_dir = normalize(markers_px[L.proximal_arm_ulnar] - markers_px[L.distal_arm_ulnar])
-
-    # parallel_nudge_factor = 0.6
-    # parallel_nudge = arm_dir * parallel_nudge_factor
-    
     extend_units = 200 * ((markers_px[L.arm_spacer_index_distal] - markers_px[L.arm_spacer_index_proximal]) * principal_direction).sum(-1).sign() * -1
 
     thumb_wrist = create_subsegments_raw(
@@ -275,7 +244,10 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
         base_name="pinky_wrist"
     )
 
-    # Wrist
+
+    # -------------------------------
+    # Wrist -> metacarps
+    # -------------------------------
     with segs.surface_affinity(w=0.7, b=0.1):
 
         segs.add(spread_clones(smooth_transition(thumb_wrist, thumb_metacarp), spread_factor=palm_spread_factor))
@@ -285,11 +257,10 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
         segs.add(spread_clones(smooth_transition(ring_wrist, ring_metacarp), spread_factor=palm_spread_factor))
         segs.add(spread_clones(smooth_transition(pinky_wrist, pinky_metacarp), spread_factor=palm_spread_factor))
 
-    
-    
-    # segs.add(create_subsegments(2, L.thumb_cmc, L.tabertier))
 
+    # -------------------------------
     # Tabertier
+    # -------------------------------
     with segs.surface_affinity(w=0.7, b=0.1):
 
         segs.add(spread_clones(create_subsegments(2, L.tabertier, L.tabertier_arc, base_name="tabertier"), n_symmetric_clones=1, spread_factor=10))
@@ -333,334 +304,27 @@ def build_segments(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tens
         spread = spread_clones(to_spread, 1, spread_factor=spread_factor, join_start=True, join_end=False)
         return (spread | tip)
     
+    # -------------------------------
     # Fingers
+    # -------------------------------
     with segs.surface_affinity(w=0.7, b=-0.05):
         segs.add(split_except_tip(thumb_finger))
         segs.add(split_except_tip(index_finger))
         segs.add(split_except_tip(middle_finger))
         segs.add(split_except_tip(ring_finger))
         segs.add(split_except_tip(pinky_finger))
-    
-
-    # segs.add(spread_clones(index_finger[:-1], 1, spread_factor=spread_factor))
-    # segs.append(index_finger[-1])
-
-    # segs.add(spread_clones(middle_finger[:-1], 1, spread_factor=spread_factor))
-    # segs.append(middle_finger[-1])
-
-    # segs.add(spread_clones(ring_finger[:-1], 1, spread_factor=spread_factor))
-    # segs.append(ring_finger[-1])
-
-    # segs.add(spread_clones(pinky_finger[:-1], 1, spread_factor=spread_factor))
-    # segs.append(pinky_finger[-1])
-
-    # segs.add(spread_clones(thumb_finger[:-1], 1, spread_factor=spread_factor))
-    # segs.append(thumb_finger[-1])
-
 
     inter_finger_project_frac = 0.2
     def between_fingers(inter_mcp: str, inter_pip: str) -> Dict[str, torch.Tensor]:
         return torch.stack((markers_px[inter_mcp], project_marker_along_segment(start=markers_px[inter_mcp], stop=markers_px[inter_pip], frac=inter_finger_project_frac)))
         
+    # -------------------------------
     # Skin between the 4 ulnar fingers
+    # -------------------------------
     with segs.surface_affinity(w=1.5, b=-0.1):
         segs.add({"between_index_middle": between_fingers(inter_mcp=L.inter_mcp_index_middle, inter_pip=L.inter_pip_index_middle)})
         segs.add({"between_middle_ring": between_fingers(inter_mcp=L.inter_mcp_middle_ring, inter_pip=L.inter_pip_middle_ring)})
         segs.add({"between_ring_pinky": between_fingers(inter_mcp=L.inter_mcp_ring_pinky, inter_pip=L.inter_pip_ring_pinky)})
 
-    # segs.append(torch.stack((markers_px[L.inter_mcp_middle_ring], project_marker_along_segment(start=markers_px[L.inter_mcp_middle_ring], stop=markers_px[L.inter_pip_middle_ring], frac=inter_finger_project_frac))))
-    # segs.append(torch.stack((markers_px[L.inter_mcp_ring_pinky], project_marker_along_segment(start=markers_px[L.inter_mcp_ring_pinky], stop=markers_px[L.inter_pip_ring_pinky], frac=inter_finger_project_frac))))
 
-
-    # line_px = sample_line(mask[0], start_point=markers_px[L.proximal_arm_ulnar], end_point=markers_px[L.proximal_arm_radial]).to(torch.uint8)
-
-    
-    
-    # idx = get_transitions(sampled_line=line_px)
-    # print(idx)
-
-    
-
-    # segs.append(torch.stack(tpoints))
-
-    # rich.print(tpoints)
-
-
-
-
-    # line = markers_px[L.proximal_arm_ulnar] - markers_px[L.proximal_arm_radial]
-    # line_length = int(vec_len(line))
-    # coord0 = torch.linspace(start=markers_px[L.proximal_arm_radial][0], end=markers_px[L.proximal_arm_ulnar][0], steps=line_length, device=mask.device) #/ (w - 1)
-    # # print(f"{coord0 = }")
-    # coord1 = torch.linspace(start=markers_px[L.proximal_arm_radial][1], end=markers_px[L.proximal_arm_ulnar][1], steps=line_length, device=mask.device) #/ (h - 1)
-    # # print(f"{coord0.shape = }")
-
-    # line_grid = torch.stack((coord0, coord1), dim=-1) / torch.tensor((w - 1, h - 1), device=mask.device)
-    # # print(f"{line_grid = }")
-    # # print(f"{mask.shape = }")
-    # # line_grid = einops.rearrange(line_grid, "w c -> 1 1 w c")
-    # # line_px = torch.nn.functional.grid_sample(input=mask.unsqueeze(0).to(torch.float32), grid=line_grid, align_corners=False)
-    # # line_px = einops.rearrange(line_px, "1 1 1 w -> w")
-
-    # print(f"{mask.shape = }")
-
-    # fig = px.imshow(mask.squeeze(0).cpu().numpy(), color_continuous_scale='Viridis', binary_string=None)
-
-    # x_coords = line_grid[0, 0, :, 0] * (w - 1)
-    # y_coords = line_grid[0, 0, :, 1] * (h - 1)
-
-
-    # fig.add_trace(
-    #     go.Scatter(
-    #         # x=coord0.cpu().numpy(),
-    #         # y=coord1.cpu().numpy(),
-    #         x=x_coords.cpu().numpy(),
-    #         y=y_coords.cpu().numpy(),
-    #         mode='markers',
-    #         marker=dict(
-    #             size=10, 
-    #             line=dict(width=2, color='white')
-    #         ),
-
-    #         hoverinfo="text+x+y", # Shows the name AND coordinates
-    #         name='Points'
-    #     )
-    # )
-
-    # fig.update_layout(
-    #     margin=dict(l=0, r=0, b=0, t=0),
-    #     showlegend=False
-    # )
-    
-    # fig.show()
-    
-    # fig = px.line(x=range(line_px.shape[0]), y=line_px.cpu().numpy(), height=256)
-    # fig.show()
-
-    # from datapipes.plotting import plot
-    # plot(mask)
-
-    # fig = px.line(x=range(h), y=mask[0, :, 18].cpu().numpy(), height=256)
-    # fig.show()
-
-
-    # out = torch.stack(tuple(segs.segs.values())).to("cuda")
-    # out = einops.rearrange(out, "s e c -> e s c")
-    
-    return segs #out #, segs
-
-# def build_segments_named(landmarks_px: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-#     """
-#     out: torch.Tensor (segment start_stop coord2D)
-#     """
-
-#     _, h, w = mask.shape
-#     # print(f"{h = }, {w = }")
-#     landmarks_px = landmarks_px.to(device="cuda", dtype=torch.float32)
-#     markers_px, markers_idx = add_custom_markers(landmarks_px, mask=mask)
-
-#     segs = []
-    
-#     principal_direction = normalize(markers_px[L.middle_mcp] - markers_px[L.wrist])
-#     thumb_direction = normalize(markers_px[L.index_mcp] - markers_px[L.middle_mcp])
-#     thumb_dir_sign = (torch.stack((-principal_direction[1], principal_direction[0])) * thumb_direction).sum(-1).sign()
-    
-#     prototypical_hand_scale_factor = 60 # Arbitrarily determined normalization factor
-#     hand_scale_factor = torch.tensor((
-#         vec_len(markers_px[L.index_mcp] - markers_px[L.middle_mcp]),
-#         vec_len(markers_px[L.middle_mcp] - markers_px[L.ring_mcp]),
-#         vec_len(markers_px[L.ring_mcp] - markers_px[L.pinky_mcp]),
-#     )).mean() / prototypical_hand_scale_factor
-
-#     # Curry segment helpers to current markers
-#     create_subsegments = functools.partial(create_subsegments_idx, markers_px)
-#     spread_clones = functools.partial(spread_clones_in_dir, thumb_dir_sign)
-
-    
-    
-
-#     # print(f"{principal_direction = }")
-#     # print(f"{thumb_direction = }")
-#     # print(f"{thumb_dir_sign = }")
-#     # print(f"{hand_scale_factor = }")
-
-#     palm_sub_seg_n = 4
-#     palm_skip_factor = 1
-#     palm_skip_offset_frac = 0.0
-
-#     proximal_phalanges_sub_seg_n = 3 
-#     intermediate_phalanges_sub_seg_n = 2
-#     distal_phalanges_sub_seg_n = 3
-
-#     arm_sub_seg_n = 6
-
-#     index_metacarp = create_subsegments(palm_sub_seg_n, L.index_vantage_wrist, L.index_mcp, skip_factor=palm_skip_factor, skip_offset_frac=0)
-#     middle_metacarp = create_subsegments(palm_sub_seg_n, L.middle_vantage_wrist, L.middle_mcp, skip_factor=palm_skip_factor, skip_offset_frac=palm_skip_offset_frac)
-#     ring_metacarp = (create_subsegments(palm_sub_seg_n, L.ring_vantage_wrist, L.ring_mcp, skip_factor=palm_skip_factor, skip_offset_frac=0))
-#     pinky_metacarp = (create_subsegments(palm_sub_seg_n, L.pinky_vantage_wrist, L.pinky_mcp, skip_factor=palm_skip_factor, skip_offset_frac=palm_skip_offset_frac))
-    
-#     palm_spread_factor = 4
-    
-#     segs.extend(spread_clones(index_metacarp, spread_factor=palm_spread_factor))
-#     segs.extend(spread_clones(middle_metacarp, spread_factor=palm_spread_factor))
-#     segs.extend(spread_clones(ring_metacarp, spread_factor=palm_spread_factor))
-#     segs.extend(spread_clones(pinky_metacarp, spread_factor=palm_spread_factor))
-
-
-#     arm_dir = normalize(markers_px[L.proximal_arm] - markers_px[L.distal_arm])
-
-#     radial_arm_dir = normalize(markers_px[L.proximal_arm_radial] - markers_px[L.distal_arm_radial])
-
-#     ulnar_arm_dir = normalize(markers_px[L.proximal_arm_ulnar] - markers_px[L.distal_arm_ulnar])
-
-#     parallel_nudge_factor = 0.6
-#     parallel_nudge = arm_dir * parallel_nudge_factor
-    
-#     extend_units = 200 * ((markers_px[L.arm_spacer_index_distal] - markers_px[L.arm_spacer_index_proximal]) * principal_direction).sum(-1).sign() * -1
-
-#     segs.extend(spread_clones(create_subsegments_raw(arm_sub_seg_n, markers_px[L.thumb_vantage_wrist], markers_px[L.thumb_vantage_wrist] + normalize(markers_px[L.arm_spacer_thumb_distal] - markers_px[L.arm_spacer_thumb_proximal]) * extend_units * hand_scale_factor)))
-
-#     segs.extend(spread_clones(create_subsegments_raw(arm_sub_seg_n, markers_px[L.index_vantage_wrist], markers_px[L.index_vantage_wrist] + normalize(markers_px[L.arm_spacer_index_distal] - markers_px[L.arm_spacer_index_proximal]) * extend_units * hand_scale_factor)))
-
-#     segs.extend(spread_clones(create_subsegments_raw(arm_sub_seg_n, markers_px[L.middle_vantage_wrist], markers_px[L.middle_vantage_wrist] + normalize(markers_px[L.arm_spacer_middle_distal] - markers_px[L.arm_spacer_middle_proximal]) * extend_units * hand_scale_factor)))
-
-#     segs.extend(spread_clones(create_subsegments_raw(arm_sub_seg_n, markers_px[L.ring_vantage_wrist], markers_px[L.ring_vantage_wrist] + normalize(markers_px[L.arm_spacer_ring_distal] - markers_px[L.arm_spacer_ring_proximal]) * extend_units * hand_scale_factor)))
-
-#     segs.extend(spread_clones(create_subsegments_raw(arm_sub_seg_n, markers_px[L.pinky_vantage_wrist], markers_px[L.pinky_vantage_wrist] + normalize(markers_px[L.arm_spacer_pinky_distal] - markers_px[L.arm_spacer_pinky_proximal]) * extend_units * hand_scale_factor)))
-
-#     segs.extend(spread_clones(create_subsegments_raw(3, markers_px[L.thumb_vantage_wrist], markers_px[L.thumb_mcp]), n_symmetric_clones=1))
-#     # segs.extend(create_subsegments(2, L.thumb_cmc, L.tabertier))
-
-#     segs.extend(spread_clones(create_subsegments(2, L.tabertier, L.tabertier_arc), n_symmetric_clones=1, spread_factor=5))
-    
-
-
-#     thumb_finger = ([]
-#         + create_subsegments(intermediate_phalanges_sub_seg_n, L.thumb_mcp, L.thumb_ip)
-#         + create_subsegments(distal_phalanges_sub_seg_n, L.thumb_ip, L.thumb_extended_tip)
-#     )
-
-#     index_finger = ([]
-#         + create_subsegments(proximal_phalanges_sub_seg_n, L.index_mcp, L.index_pip)
-#         + create_subsegments(intermediate_phalanges_sub_seg_n, L.index_pip, L.index_dip)
-#         + create_subsegments(distal_phalanges_sub_seg_n, L.index_dip, L.index_extended_tip)
-#     )
-
-#     middle_finger = ([]
-#         + create_subsegments(proximal_phalanges_sub_seg_n, L.middle_mcp, L.middle_pip)
-#         + create_subsegments(intermediate_phalanges_sub_seg_n, L.middle_pip, L.middle_dip)
-#         + create_subsegments(distal_phalanges_sub_seg_n, L.middle_dip, L.middle_extended_tip)
-#     )
-
-#     ring_finger = ([]
-#         + create_subsegments(proximal_phalanges_sub_seg_n, L.ring_mcp, L.ring_pip)
-#         + create_subsegments(intermediate_phalanges_sub_seg_n, L.ring_pip, L.ring_dip)
-#         + create_subsegments(distal_phalanges_sub_seg_n, L.ring_dip, L.ring_extended_tip)
-#     )
-
-#     pinky_finger = ([]
-#         + create_subsegments(proximal_phalanges_sub_seg_n, L.pinky_mcp, L.pinky_pip)
-#         + create_subsegments(intermediate_phalanges_sub_seg_n, L.pinky_pip, L.pinky_dip)
-#         + create_subsegments(distal_phalanges_sub_seg_n, L.pinky_dip, L.pinky_extended_tip)
-#     )
-
-#     spread_factor=3
-#     print(f"Before adding fingers: {len(segs) = }")
-#     segs.extend(spread_clones(index_finger[:-1], 1, spread_factor=spread_factor))
-#     segs.append(index_finger[-1])
-
-#     segs.extend(spread_clones(middle_finger[:-1], 1, spread_factor=spread_factor))
-#     segs.append(middle_finger[-1])
-
-#     segs.extend(spread_clones(ring_finger[:-1], 1, spread_factor=spread_factor))
-#     segs.append(ring_finger[-1])
-
-#     segs.extend(spread_clones(pinky_finger[:-1], 1, spread_factor=spread_factor))
-#     segs.append(pinky_finger[-1])
-
-#     segs.extend(spread_clones(thumb_finger[:-1], 1, spread_factor=spread_factor))
-#     segs.append(thumb_finger[-1])
-
-
-#     inter_finger_project_frac = 0.2
-#     segs.append(torch.stack((markers_px[L.inter_mcp_index_middle], project_marker_along_segment(start=markers_px[L.inter_mcp_index_middle], stop=markers_px[L.inter_pip_index_middle], frac=inter_finger_project_frac))))
-#     segs.append(torch.stack((markers_px[L.inter_mcp_middle_ring], project_marker_along_segment(start=markers_px[L.inter_mcp_middle_ring], stop=markers_px[L.inter_pip_middle_ring], frac=inter_finger_project_frac))))
-#     segs.append(torch.stack((markers_px[L.inter_mcp_ring_pinky], project_marker_along_segment(start=markers_px[L.inter_mcp_ring_pinky], stop=markers_px[L.inter_pip_ring_pinky], frac=inter_finger_project_frac))))
-
-
-#     # line_px = sample_line(mask[0], start_point=markers_px[L.proximal_arm_ulnar], end_point=markers_px[L.proximal_arm_radial]).to(torch.uint8)
-
-    
-    
-#     # idx = get_transitions(sampled_line=line_px)
-#     # print(idx)
-
-    
-
-#     # segs.append(torch.stack(tpoints))
-
-#     # rich.print(tpoints)
-
-
-
-
-#     # line = markers_px[L.proximal_arm_ulnar] - markers_px[L.proximal_arm_radial]
-#     # line_length = int(vec_len(line))
-#     # coord0 = torch.linspace(start=markers_px[L.proximal_arm_radial][0], end=markers_px[L.proximal_arm_ulnar][0], steps=line_length, device=mask.device) #/ (w - 1)
-#     # # print(f"{coord0 = }")
-#     # coord1 = torch.linspace(start=markers_px[L.proximal_arm_radial][1], end=markers_px[L.proximal_arm_ulnar][1], steps=line_length, device=mask.device) #/ (h - 1)
-#     # # print(f"{coord0.shape = }")
-
-#     # line_grid = torch.stack((coord0, coord1), dim=-1) / torch.tensor((w - 1, h - 1), device=mask.device)
-#     # # print(f"{line_grid = }")
-#     # # print(f"{mask.shape = }")
-#     # # line_grid = einops.rearrange(line_grid, "w c -> 1 1 w c")
-#     # # line_px = torch.nn.functional.grid_sample(input=mask.unsqueeze(0).to(torch.float32), grid=line_grid, align_corners=False)
-#     # # line_px = einops.rearrange(line_px, "1 1 1 w -> w")
-
-#     # print(f"{mask.shape = }")
-
-#     # fig = px.imshow(mask.squeeze(0).cpu().numpy(), color_continuous_scale='Viridis', binary_string=None)
-
-#     # x_coords = line_grid[0, 0, :, 0] * (w - 1)
-#     # y_coords = line_grid[0, 0, :, 1] * (h - 1)
-
-
-#     # fig.add_trace(
-#     #     go.Scatter(
-#     #         # x=coord0.cpu().numpy(),
-#     #         # y=coord1.cpu().numpy(),
-#     #         x=x_coords.cpu().numpy(),
-#     #         y=y_coords.cpu().numpy(),
-#     #         mode='markers',
-#     #         marker=dict(
-#     #             size=10, 
-#     #             line=dict(width=2, color='white')
-#     #         ),
-
-#     #         hoverinfo="text+x+y", # Shows the name AND coordinates
-#     #         name='Points'
-#     #     )
-#     # )
-
-#     # fig.update_layout(
-#     #     margin=dict(l=0, r=0, b=0, t=0),
-#     #     showlegend=False
-#     # )
-    
-#     # fig.show()
-    
-#     # fig = px.line(x=range(line_px.shape[0]), y=line_px.cpu().numpy(), height=256)
-#     # fig.show()
-
-#     from datapipes.plotting import plot
-#     # plot(mask)
-
-#     # fig = px.line(x=range(h), y=mask[0, :, 18].cpu().numpy(), height=256)
-#     # fig.show()
-
-
-#     # out = torch.stack(segs).to("cuda")
-#     # out = einops.rearrange(out, "s e c -> e s c")
-    
-#     # return out
+    return segs

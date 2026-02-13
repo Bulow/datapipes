@@ -7,6 +7,8 @@ from pathlib import Path
 # import test_compression_method as test
 from typing import Dict, Tuple, Any, Callable, List, Optional, Literal
 from datapipes.ops import Ops
+from datapipes.plotting.torch_colormap import TorchColormap
+from datapipes.plotting import qtile, map01
 
 def _get_nv12(frames: torch.Tensor) -> torch.Tensor:
     assert frames.dtype == torch.uint8
@@ -25,12 +27,34 @@ def _get_nv12(frames: torch.Tensor) -> torch.Tensor:
     nv12 = torch.cat((y_plane, uv_plane), dim=-2)
     return nv12
 
+def _get_rgb24_generator(frames: torch.Tensor):
+    if frames.ndim == 3:
+            frames = frames.unsqueeze(0)
+    
+    # print(f"{frames.shape = }")
+    # from datapipes.plotting import plot
+    # plot(frames)
+    rgb_np = frames.permute(0, 2, 3, 1).cpu().numpy()
+
+    h, w = rgb_np.shape[1:-1]
+
+    # Create RGB frames
+    frame_rgb = [av.VideoFrame.from_ndarray(
+        f,
+        format="rgb24"
+    ).reformat(
+        width=w,
+        height=h,
+        format="yuv444p"
+    ) for f in rgb_np]
+    return frame_rgb
+
 
 def _get_tensor_raw_size(t: torch.Tensor) -> int:
     """Return raw size in bytes of tensor storage."""
     return int(t.nelement() * t.element_size())
 
-def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec: str="hevc_nvenc", stream_options: Optional[Dict]=None, overwrite: bool=False):
+def _datapipe_to_video(data: DataPipe, out_path: Path|str, batch_size=512, fps: int = 60, codec: str="hevc_nvenc", stream_options: Optional[Dict]=None, overwrite: bool=False):
     """
     Encode a batch of grayscale frames stored as a CUDA tensor (N,1,H,W)
     into an H.264-in-MP4 file using NVENC via PyAV.
@@ -41,9 +65,9 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
     """
     data = data | Ops.gpu
     assert len(data.shape) == 4
-    assert data.shape[1] == 1, "Expect (N,1,H,W)"
+    assert data.shape[1] == 1 or data.shape[1] == 3, "Expect (N,1,H,W) or (N,3,H,W)"
     frames = data[0:1]
-    assert frames.dtype == torch.uint8
+    # assert frames.dtype == torch.uint8
     assert frames.is_cuda
 
     out_path = Path(out_path)
@@ -56,7 +80,11 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
     if not out_path.parent.exists():
         out_path.parent.mkdir(parents=True)
 
-    N, _, H, W = data.shape
+    
+
+    N, C, H, W = data.shape
+    # C = 3
+    is_grayscale = C == 1
 
     # Open MP4 container for writing
     container = av.open(out_path.as_posix(), mode="w")
@@ -64,7 +92,7 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
     stream = container.add_stream(codec, rate=fps)
     stream.width = W
     stream.height = H
-    stream.pix_fmt = "nv12"
+    stream.pix_fmt = "nv12" if is_grayscale else "yuv444p"
 
     stream.options = stream_options or {
         "preset": "p7",        # p1..p7 (p7 = highest quality)
@@ -73,15 +101,38 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
         "qp": "0",             # QP=0 = mathematically lossless
     }
 
+    v_min_max: Optional[torch.Tensor] = None
     max_frames = None
-    for batch in data.batches_with_progressbar(batch_size=512, max_frames=max_frames):
+    for batch in data.batches_with_progressbar(batch_size=batch_size, max_frames=max_frames):
         # for i in range(N):
-        nv12_batch = _get_nv12(batch).cpu().numpy()
-        for f in nv12_batch:
+        if is_grayscale:
+            if v_min_max is None:
+                v_min_max = torch.quantile(batch, torch.tensor((0.02, 0.98), device=batch.device))
+                print(f"{v_min_max = }")
+            batch = batch.clamp(min=v_min_max[0], max=v_min_max[1])
+            batch = map01(batch)
+            batch = Ops.float01_to_bytes_cpu(batch)
 
-            video_frame = av.VideoFrame.from_ndarray(f[0], format="nv12")
-            av.VideoStream
-            video_frame.pict_type = 0
+            formatted_batch = _get_nv12(batch).cpu().numpy()
+        else:
+            if v_min_max is None:
+                v_min_max = torch.quantile(batch, torch.tensor((0.02, 0.98), device=batch.device))
+                print(f"{v_min_max = }")
+            if batch.shape[-3] == 1:
+                if batch.dtype == torch.uint8:
+                    batch = Ops.bytes_to_float01_gpu(frames)
+                batch = batch.clamp(min=v_min_max[0], max=v_min_max[1])
+                batch = map01(batch)
+                batch = Ops.float01_to_bytes_cpu(TorchColormap.apply(batch, cmap_name="viridis")).to(torch.uint8)
+            formatted_batch =_get_rgb24_generator(batch)
+        for f in formatted_batch:
+
+            if is_grayscale:
+                video_frame = av.VideoFrame.from_ndarray(f[0], format="nv12")
+                av.VideoStream
+                video_frame.pict_type = 0
+            else:
+                video_frame = f
 
             # Encode and mux packets
             for packet in stream.encode(video_frame):
@@ -102,7 +153,7 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, fps: int = 60, codec:
 # print(p)
 # encode_tensor_to_mp4_nvenc(raw, p)
 
-def datapipe_to_lossless_hevc_mp4(raw: DataPipe, out_path: str, fps: int = 60, overwrite: bool=False):
+def datapipe_to_lossless_hevc_mp4(raw: DataPipe, out_path: str, batch_size=512, fps: int = 60, overwrite: bool=False):
     codec = "hevc_nvenc"
     stream_options = {
         "preset": "p7",        # p1..p7 (p7 = highest quality)
@@ -111,7 +162,7 @@ def datapipe_to_lossless_hevc_mp4(raw: DataPipe, out_path: str, fps: int = 60, o
         "qp": "0",             # QP=0 = mathematically lossless
     }
 
-    _datapipe_to_video(data=raw, out_path=out_path, fps=fps, codec=codec, stream_options=stream_options, overwrite=overwrite)
+    _datapipe_to_video(data=raw, out_path=out_path, batch_size=batch_size, fps=fps, codec=codec, stream_options=stream_options, overwrite=overwrite)
 
 def datapipe_to_lossy_av1_mp4(raw: DataPipe, out_path: str, fps: int = 60, overwrite: bool=False, quality_preset: Literal["p1", "p2", "p3", "p4", "p5", "p6", "p7"] = "p7"):
     """

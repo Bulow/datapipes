@@ -180,6 +180,8 @@ def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_backgro
 
 
 def create_distinct_colormap(img: torch.Tensor) -> torch.Tensor:
+    # labels = torch.unique(img).to(torch.int64)
+    # labels = torch.arange(0, 255, 1, dtype=torch.uint8, device="cuda")
     labels = torch.unique(img).to(torch.int64)
 
     # integer hash -> RGB bytes (deterministic, decorrelates nearby labels)
@@ -207,7 +209,7 @@ def create_distinct_colormap(img: torch.Tensor) -> torch.Tensor:
 
 def get_edge_mask(m: torch.Tensor, boundary_thickness: int=1) -> torch.BoolTensor:
     H, W = m.shape[-2:]
-    mm = m.to(torch.int16)
+    mm = m.to("cuda", dtype=torch.int16)
     edge = torch.zeros((H, W), dtype=torch.bool, device="cuda")
 
     edge[:, 1:] |= (mm[:, 1:] != mm[:, :-1])
@@ -227,12 +229,13 @@ def mask_to_distinct_colors(
     add_boundaries: bool = True,
     boundary_color=(0, 0, 0),
     boundary_thickness: int = 1,
-    overlay_background: Optional[torch.Tensor]=None, bg_strength: float = 0.1
+    overlay_background: Optional[torch.Tensor]=None, 
+    bg_strength: float = 0.1
 ) -> torch.Tensor:
     """
     Convert a uint8 segmentation mask (1,H,W) or (H,W) to a visually distinct RGB image (3,H,W) uint8.
     Each unique label gets a high-contrast, deterministic color.
-    """
+    # """
     if mask.dim() == 3 and mask.shape[0] == 1:
         m = mask[0]
     elif mask.dim() == 2:
@@ -243,12 +246,12 @@ def mask_to_distinct_colors(
     if m.dtype != torch.uint8:
         raise ValueError("mask must be uint8")
 
-    H, W = m.shape
+    H, W = m.shape[-2:]
     device = m.device
 
-    lut = create_distinct_colormap(m)
-
-    rgb = lut[m.to(torch.long)].permute(2, 0, 1).contiguous()  # (3,H,W)
+    lut = create_distinct_colormap(m).to("cuda")
+    rgb = lut[m.to(torch.long)].permute(2, 0, 1).contiguous()
+    # rgb = einops.rearrange(lut[m.to(torch.long)], "h w c -> c h w").contiguous().to("cuda")
 
     if add_boundaries:
         edge = get_edge_mask(m, boundary_thickness=boundary_thickness)
@@ -266,7 +269,7 @@ def mask_to_distinct_colors(
         #     edge = (F.max_pool2d(edge_f, kernel_size=k, stride=1, padding=k // 2)[0, 0] > 0)
 
         # IMPORTANT FIX: rgb[:, edge] has shape (3, N), so boundary color must be (3, 1) or (3,)
-        bc = torch.tensor(boundary_color, dtype=torch.uint8, device=device).view(3, 1)
+        bc = torch.tensor(boundary_color, dtype=torch.uint8, device="cuda").view(3, 1)
         rgb[:, edge] = bc  # broadcasts across N
 
     if overlay_background is not None:
@@ -372,4 +375,191 @@ def plot_segmentation_mask_plotly(
 
     if html_output_path is not None:
         interactive_plots.create_standalone_html_plot(fig, html_output_path)
+    return fig
+
+
+def animated_scatter_2d(
+    points: torch.Tensor,
+    *,
+    title: str = "Animated 2D Scatter",
+    marker_size: int = 6,
+    fps: int = 30,
+    xlim=None,   # (xmin, xmax) or None -> auto from data
+    ylim=None,   # (ymin, ymax) or None -> auto from data
+    show_trails: bool = False,
+    trail_len: int = 10,
+):
+    """
+    Create a Plotly animated scatter from a (T, N, 2) PyTorch tensor.
+
+    Args:
+        points: torch.Tensor of shape (T, N, 2).
+        title: Plot title.
+        marker_size: Marker size.
+        fps: Animation speed (frames per second).
+        xlim, ylim: Optional axis limits (min, max). If None, inferred from data.
+        show_trails: If True, show short motion trails per point.
+        trail_len: Number of past steps to include in the trail (only if show_trails).
+
+    Returns:
+        plotly.graph_objects.Figure
+    """
+    if not isinstance(points, torch.Tensor):
+        raise TypeError("points must be a torch.Tensor")
+    if points.ndim != 3 or points.shape[-1] != 2:
+        raise ValueError(f"Expected shape (T, N, 2); got {tuple(points.shape)}")
+
+    # Move to CPU and convert to numpy for Plotly
+    pts = points.detach()
+    if pts.is_cuda:
+        pts = pts.cpu()
+    pts_np = pts.numpy()
+
+    T, N, _ = pts_np.shape
+
+    # Auto axis ranges (global over time)
+    if xlim is None:
+        xmin = float(pts_np[..., 0].min())
+        xmax = float(pts_np[..., 0].max())
+        pad = 0.05 * (xmax - xmin if xmax > xmin else 1.0)
+        xlim = (xmin - pad, xmax + pad)
+    if ylim is None:
+        ymin = float(pts_np[..., 1].min())
+        ymax = float(pts_np[..., 1].max())
+        pad = 0.05 * (ymax - ymin if ymax > ymin else 1.0)
+        ylim = (ymin - pad, ymax + pad)
+
+    # Base trace at t=0
+    base_x = pts_np[0, :, 0]
+    base_y = pts_np[0, :, 1]
+
+    data_traces = [
+        go.Scatter(
+            x=base_x,
+            y=base_y,
+            mode="markers",
+            marker=dict(size=marker_size),
+            name="points",
+        )
+    ]
+
+    # Optional trails trace (as line segments separated by None)
+    if show_trails:
+        data_traces.append(
+            go.Scatter(
+                x=[],
+                y=[],
+                mode="lines",
+                line=dict(width=1),
+                name="trails",
+            )
+        )
+
+    # Build frames
+    frames = []
+    for t in range(T):
+        frame_traces = [
+            go.Scatter(
+                x=pts_np[t, :, 0],
+                y=pts_np[t, :, 1],
+                mode="markers",
+                marker=dict(size=marker_size),
+            )
+        ]
+
+        if show_trails:
+            t0 = max(0, t - trail_len + 1)
+            # Build polyline segments for each point: (x_t0..x_t, y_t0..y_t) separated by None
+            xs = []
+            ys = []
+            seg = pts_np[t0 : t + 1]  # (L, N, 2)
+            for i in range(N):
+                xs.extend(seg[:, i, 0].tolist())
+                ys.extend(seg[:, i, 1].tolist())
+                xs.append(None)
+                ys.append(None)
+
+            frame_traces.append(
+                go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="lines",
+                    line=dict(width=1),
+                )
+            )
+
+        frames.append(go.Frame(data=frame_traces, name=str(t)))
+
+    frame_duration_ms = int(round(1000 / max(1, fps)))
+
+    fig = go.Figure(
+        data=data_traces,
+        frames=frames,
+        layout=go.Layout(
+            title=title,
+            xaxis=dict(range=list(xlim), autorange=False, zeroline=False),
+            yaxis=dict(range=list(ylim), autorange=False, zeroline=False),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    showactive=False,
+                    x=0.0,
+                    y=1.15,
+                    xanchor="left",
+                    yanchor="top",
+                    buttons=[
+                        dict(
+                            label="Play",
+                            method="animate",
+                            args=[
+                                None,
+                                dict(
+                                    frame=dict(duration=frame_duration_ms, redraw=True),
+                                    transition=dict(duration=0),
+                                    fromcurrent=True,
+                                    mode="immediate",
+                                ),
+                            ],
+                        ),
+                        dict(
+                            label="Pause",
+                            method="animate",
+                            args=[
+                                [None],
+                                dict(frame=dict(duration=0, redraw=False), mode="immediate"),
+                            ],
+                        ),
+                    ],
+                )
+            ],
+            sliders=[
+                dict(
+                    active=0,
+                    x=0.0,
+                    y=1.05,
+                    xanchor="left",
+                    yanchor="top",
+                    len=1.0,
+                    pad=dict(t=10, b=10),
+                    currentvalue=dict(prefix="t = "),
+                    steps=[
+                        dict(
+                            method="animate",
+                            args=[
+                                [str(t)],
+                                dict(
+                                    frame=dict(duration=0, redraw=True),
+                                    transition=dict(duration=0),
+                                    mode="immediate",
+                                ),
+                            ],
+                            label=str(t),
+                        )
+                        for t in range(T)
+                    ],
+                )
+            ],
+        ),
+    )
+
     return fig

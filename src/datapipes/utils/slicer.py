@@ -14,8 +14,9 @@ class _Slicer:
     def __getitem__(self, index: Tuple):
         return self.normalize(index, self.shape)
     
-    def from_shape(self, shape: Tuple[int]) -> "_Slicer":
-        return _Slicer(shape=shape)
+    @classmethod
+    def from_shape(cls, shape: Tuple[int]) -> "_Slicer":
+        return cls(shape=shape)
     
     def normalize(self, index, shape: Optional[Tuple[int]]=None):
         

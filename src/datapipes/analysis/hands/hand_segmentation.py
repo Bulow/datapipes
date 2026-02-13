@@ -18,41 +18,97 @@ import matplotlib.pyplot as plt
 from datapipes.utils import Slicer
 from datapipes import sinks
 import kornia
+import einops
 
 from datapipes.plotting import plot, crop_to_common_size
 
-def _get_hist(frames: torch.Tensor, num_bins=256, min_val=0, max_val=0) -> torch.Tensor:
+def cc_get_hist(frames: torch.Tensor, num_bins=256, min_val=0, max_val=0) -> torch.Tensor:
     frames = map01(frames)
     hist_original = torch.histc(frames.reshape(-1).to("cuda"), bins=num_bins, min=min_val, max=max_val)
 
     eps = 1e-12
     normalized_hist = (hist_original + eps) / (hist_original.sum() + eps)
-    # plt.figure(figsize=(50, 10))
-    # plt.plot(normalized_hist.cpu().numpy())
+    plt.figure(figsize=(50, 10))
+    plt.plot(normalized_hist.cpu().numpy())
 
     return normalized_hist
+    
 
-def _get_mask(data: torch.Tensor, num_hist_bins: int=256, upper_quantile_q_value: float=0.9) -> torch.Tensor:
-    hist = _get_hist(data, num_bins=num_hist_bins)
-    _, max_idx = torch.max(hist, dim=0)
-    # print(max_val, max_idx)
+def _get_hist(flat_frames: torch.Tensor) -> torch.Tensor:
+    
+    if flat_frames.dtype != torch.uint8:
+        raise ValueError("Input tensor must be uint8")
+    if flat_frames.dim() != 2:
+        raise ValueError("Input tensor must be 2D")
 
-    upper_quantile = torch.quantile(data, q=upper_quantile_q_value)
-    upper_quantile_idx = torch.ceil(upper_quantile * num_hist_bins).to(torch.int).item()
+    B, X = flat_frames.shape
 
-    border_region = hist[max_idx:upper_quantile_idx]
+    # indices must be long
+    idx = flat_frames.to(torch.long)
 
-    # plt.plot(border_region.cpu().numpy())
+    # output histogram
+    hist = torch.zeros((B, 256), device=flat_frames.device, dtype=torch.int64)
 
-    _, cutoff_idx = torch.min(border_region, dim=0)
+    # source tensor must match idx shape
+    src = torch.ones((B, X), device=flat_frames.device, dtype=hist.dtype)
+    # print(f"{hist.shape = }, {src.shape = }, {idx.shape = }")
+    # print(f"{hist.dtype = }, {src.dtype = }, {idx.dtype = }")
+    # print(f"{type(hist) = }, {type(src) = }, {type(idx) = }")
+    # print(f"{idx.max(1).values = }, {idx.min(1).values}")
+    # print(src[0])
+    hist.scatter_add_(1, idx.to(torch.int64), src.to(torch.int64))
+    # print(hist)
 
-    cutoff_idx = max_idx + cutoff_idx
+    eps = 1e-12
+    normalized_hist = (hist + eps) / (hist.sum(-1, keepdim=True) + eps)
+    # plt.figure(figsize=(50, 10))
+    # plt.plot(normalized_hist.cpu().numpy())
+    return normalized_hist
+
+# def _get_hist(frames: torch.Tensor, num_bins=256, min_val=0, max_val=0) -> torch.Tensor:
+#     frames = map01(frames)
+#     hist_original = torch.histc(frames.reshape(-1).to("cuda"), bins=num_bins, min=min_val, max=max_val)
+
+#     values, counts = einops.rearrange((frames * 255.0).to(torch.uint8), "t c h w -> (c h w) t").unique(return_counts=True, dim=1)
+
+#     print(f"{values.shape = }, {counts.shape = }")
+#     raise RuntimeError()
+
+
+#     eps = 1e-12
+#     normalized_hist = (hist_original + eps) / (hist_original.sum() + eps)
+#     # plt.figure(figsize=(50, 10))
+#     # plt.plot(normalized_hist.cpu().numpy())
+
+#     return normalized_hist
+
+def _get_mask(data: torch.Tensor, upper_quantile_q_value: float=0.9) -> torch.Tensor:
+    num_hist_bins = 256
+
+    b, c, h, w = data.shape
+    flat_frames = einops.rearrange(data, "t c h w -> t (c h w)").contiguous()
+    hist = _get_hist((flat_frames * 255.0).to(torch.uint8))
+
+    max_idx = torch.max(hist, dim=1).indices.unsqueeze(-1)
+
+    upper_quantile = torch.quantile(flat_frames, q=upper_quantile_q_value, dim=1).unsqueeze(-1)
+
+    upper_quantile_idx = torch.ceil(upper_quantile * num_hist_bins).to(torch.int)
+
+    idx = torch.arange(256, device=hist.device).unsqueeze(0)
+    roi_mask = (idx > max_idx) & (idx < upper_quantile_idx)
+
+
+    float_hist = hist.to(torch.float32)
+    float_hist.masked_fill_(~roi_mask, value=float("inf"))
+
+    cutoff_idx = torch.min(float_hist, dim=1).indices
+
     cutoff_val = cutoff_idx / float(num_hist_bins)
-    # print(cutoff_val, cutoff_idx)
 
+    mask = (flat_frames > cutoff_val.unsqueeze(-1)).to(torch.uint8)
+    mask = einops.rearrange(mask, "b (c h w) -> b c h w", c=c, h=h, w=w)
 
-    mask = (data > cutoff_val).to(torch.uint8)
-    # test.plot(mask)
     return mask
 
 def _clean_mask(mask: torch.Tensor) -> torch.Tensor:
@@ -78,9 +134,13 @@ def _clean_mask(mask: torch.Tensor) -> torch.Tensor:
 
 def get_hand_mask(frames: torch.Tensor) -> torch.Tensor:
     # Get mask based on boolean and morphological manipulation of std and mean
+    # frames = torch.log(map01(frames) + 1e-5)
+    while frames.ndim < 5:
+        frames = frames.unsqueeze(0)
 
     # Get normalized temporal std and mean 
-    std, m = torch.std_mean(frames, dim=0)
+    std, m = torch.std_mean(frames, dim=1)
+    
     std = map01(std)
     m = map01(m)
 
@@ -91,16 +151,13 @@ def get_hand_mask(frames: torch.Tensor) -> torch.Tensor:
     # Union mask
     combined_mask = (m_mask | std_mask).to(torch.uint8)
 
-    # deblurred_mask = combined_mask
-    # Denoise
-    # blurred_mask = filters.blurs.uniform_disk_blur(map01(combined_mask.to(torch.float32)), kernel_size=3)
-    blurred_mask = kornia.filters.box_blur(input=map01(combined_mask.to(torch.float32)).unsqueeze(0), kernel_size=3, separable=True)
+    blurred_mask = kornia.filters.box_blur(input=map01(combined_mask.to(torch.float32)), kernel_size=3, separable=True)
     deblurred_mask = (blurred_mask > 0.5).to(torch.uint8)
     deblurred_mask, combined_mask = plots._pad_to_largest(deblurred_mask, combined_mask)
     mask = (deblurred_mask * combined_mask).to(torch.uint8)
 
     mask = _clean_mask(mask)
-    return mask.squeeze(0)
+    return mask#.squeeze(0)
 
 
 def apply_mask(mask: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:

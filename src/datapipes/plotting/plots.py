@@ -38,7 +38,7 @@ def backend_needs_preprocessing(backend: plot_output_backend_type) -> bool:
     need_preprocessing: Tuple[plot_output_backend_type] = ("ipython", "return_pil", "ipython_and_return_pil")
     return backend in need_preprocessing
 
-def _map01_torch(frames: torch.Tensor, eps=1e-8):
+def _map01_torch(frames: torch.Tensor, dim: Optional[int]=None, eps=1e-8):
     '''
     Map values in `frames` to `[0, 1]`
     
@@ -46,16 +46,20 @@ def _map01_torch(frames: torch.Tensor, eps=1e-8):
     '''
     # if frames.device == "meta":
     #     return frames
-
-    min_val = frames.min()
-    max_val = frames.max()
+    
+    if dim is None:
+        min_val = frames.min()
+        max_val = frames.max()
+    else:
+        min_val = frames.min(dim=dim, keepdim=True).values
+        max_val = frames.max(dim=dim, keepdim=True).values
 
     # if (min_val == max_val):
     #     return frames
     
     return (frames.to(torch.float32) - min_val) / ((max_val - min_val) + eps)
 
-def map01(frames: torch.Tensor|np.ndarray):
+def map01(frames: torch.Tensor|np.ndarray, dim: Optional[int]=None):
     '''
     Map values in `frames` to `[0, 1]`
     
@@ -64,7 +68,7 @@ def map01(frames: torch.Tensor|np.ndarray):
     if isinstance(frames, np.ndarray):
         frames = torch.from_numpy(frames)
     
-    return _map01_torch(frames)
+    return _map01_torch(frames, dim=dim)
 
 def _clip_space(frames: torch.Tensor|np.ndarray) -> torch.Tensor:
     '''
