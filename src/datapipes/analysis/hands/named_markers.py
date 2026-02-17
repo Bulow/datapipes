@@ -124,7 +124,7 @@ class L(StrEnum):
 
 def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[Dict[str, torch.Tensor], Dict[str, int]]: 
     # Mediapipe markers 
-    landmarks_px = landmarks_px.to("cuda")
+    landmarks_px = landmarks_px
     markers: Dict[str, torch.Tensor] = {}
     for name, idx in mediapipe_landmarks.items():
         markers[name] = landmarks_px[idx]

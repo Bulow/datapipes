@@ -17,14 +17,16 @@ import plotly.express as px
 
 class HandSegments:
 
-    def __init__(self):
+    def __init__(self, device="cpu"):
         self.segs: Dict[str, torch.Tensor] = {}
         self.weights: List[float] = []
         self.biases: List[float] = []
 
         self._current_weight: float = 1.0
         self._current_bias: float = 0.0
-        self._relative_origin: torch.Tensor = torch.zeros(size=(1, 1, 2), dtype=torch.float32, device="cuda")
+        self._relative_origin: torch.Tensor = torch.zeros(size=(1, 1, 2), dtype=torch.float32, device="cpu")
+
+        self.device = device
 
     def add(self, new_segs: Dict[str, torch.Tensor]):
         self.segs.update(new_segs)
@@ -52,15 +54,15 @@ class HandSegments:
         return rel_segments
 
     def get_segments_tensor(self) -> torch.Tensor:
-        out = torch.stack(tuple(self.segs.values())).to("cuda")
+        out = torch.stack(tuple(self.segs.values())).to(device=self.device)
         out = einops.rearrange(out, "s e c -> e s c")
         return out - self._relative_origin
     
     def get_weights_tensor(self) -> torch.Tensor:
-        return einops.rearrange(torch.tensor(self.weights, device="cuda", requires_grad=False), "c -> c 1 1 1")
+        return einops.rearrange(torch.tensor(self.weights, device=self.device, requires_grad=False), "c -> c 1 1 1")
     
     def get_biases_tensor(self) -> torch.Tensor:
-        return einops.rearrange(torch.tensor(self.biases, device="cuda", requires_grad=False), "c -> c 1 1 1")
+        return einops.rearrange(torch.tensor(self.biases, device=self.device, requires_grad=False), "c -> c 1 1 1")
     
     def get_name_to_value_dict(self) -> Dict[str, int]:
         return {"background": 0} | {name:i + 1 for i, name in enumerate(self.segs.keys())}
@@ -92,8 +94,8 @@ def smooth_transition(segs_to: Dict[str, torch.Tensor], segs_from: Dict[str, tor
 
 
 def create_subsegments_raw(n_subsegments: int, start_point: torch.Tensor, stop_point: torch.Tensor, base_name: str="segment", skip_factor: int=1, skip_offset_frac: float=0) -> Dict[str, torch.Tensor]:
-    linx = torch.linspace(start_point[0], stop_point[0], steps=skip_factor * n_subsegments + 1, device="cuda")
-    liny = torch.linspace(start_point[1], stop_point[1], steps=skip_factor * n_subsegments + 1, device="cuda")
+    linx = torch.linspace(start_point[0], stop_point[0], steps=skip_factor * n_subsegments + 1, device="cpu")
+    liny = torch.linspace(start_point[1], stop_point[1], steps=skip_factor * n_subsegments + 1, device="cpu")
     lin = torch.stack((linx, liny), dim=-1)
     segs = [lin[i:i+2] for i in range(int(skip_offset_frac * skip_factor), lin.shape[0] - 1, skip_factor)]
     # print(f"{segs = }")
@@ -137,7 +139,7 @@ def spread_clones_in_dir(thumb_dir_sign: int, seg_dict: Dict[str, torch.Tensor],
 
 
 
-def build_segments(markers_px: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def build_segments(markers_px: Dict[str, torch.Tensor], mask: torch.Tensor) -> torch.Tensor:
     """
     out: torch.Tensor (segment start_stop coord2D)
     """

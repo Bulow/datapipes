@@ -9,6 +9,7 @@ from typing import Dict, Tuple, Any, Callable, List, Optional, Literal
 from datapipes.ops import Ops
 from datapipes.plotting.torch_colormap import TorchColormap
 from datapipes.plotting import qtile, map01
+from datapipes.utils.prefetch_iterator import PrefetchIterator
 
 def _get_nv12(frames: torch.Tensor) -> torch.Tensor:
     assert frames.dtype == torch.uint8
@@ -104,8 +105,9 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, batch_size=512, fps: 
     v_min_max: Optional[torch.Tensor] = None
     max_frames = None
     for batch in data.batches_with_progressbar(batch_size=batch_size, max_frames=max_frames):
-        # for i in range(N):
+        # for i in range(N): 
         if is_grayscale:
+            batch = batch.to(torch.float32)
             if v_min_max is None:
                 v_min_max = torch.quantile(batch, torch.tensor((0.02, 0.98), device=batch.device))
                 print(f"{v_min_max = }")

@@ -151,10 +151,10 @@ Memory stats:
 """)
     
 
-def mean_output_benchmark(pt, desc: str="output") -> torch.Tensor:
+def mean_output_benchmark(pt, desc: str="output", batch_size: int=512) -> torch.Tensor:
     t = MultiBlockTimer()
     with t:
-        m = sinks.mean(DataPipe(pt))
+        m = sinks.mean(DataPipe(pt), batch_size=batch_size)
 
     print(human_readable_time(t.total))
     contrast_computation_bandwidth: float = (get_logical_size(pt) / t.total)

@@ -86,6 +86,7 @@ class Ops:
     def sqrt(frames: torch.Tensor, eps=1e-6) -> torch.Tensor:
         return torch.sqrt(torch.clamp_min(frames, min=0) + eps)
     
+    
     @staticmethod
     def py_to_matlab(frames: torch.Tensor|np.ndarray) -> np.ndarray:
         if isinstance(frames, torch.Tensor):
@@ -131,6 +132,20 @@ class Ops:
             slice(None, None, int(round(1 / scale_factor)))
             )
         )
+    
+
+    @staticmethod
+    def temporal_diff(d_index: int=1):
+        '''
+        Convert to GPU and/or dtype
+        '''
+        def _temporal_diff(frames: torch.Tensor):
+            # frames = frames.to(torch.float32) / 255.0
+            # print(f"{frames.shape = }, {frames.dtype = }, {frames.device = }")
+            
+            # print(f"{frames[d_index:].shape = }, {frames[:-d_index].shape = }")
+            return (frames[d_index:] - frames[:-d_index])
+        return with_manual_op(_temporal_diff, equivalent_slicing_op=((slice(0, - (d_index)), slice(None), slice(None), slice(None))))
 
     
 

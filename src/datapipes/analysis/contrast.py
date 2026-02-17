@@ -6,7 +6,7 @@ from skimage.morphology import disk
 import torch.nn.functional as F
 from datapipes.sic import sic
 from datapipes.analysis.noise import multiplicative_noise_op, stbn_like
-
+from datapipes.manual_ops import with_manual_op
 from typing import Literal, Optional, Any, Callable
 
 gpu = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,7 +41,8 @@ def get_laplacian_kernel():
         return laplacian_kernel
 
 def get_moving_mean(window_size):
-    def inner(frames):
+    # kernel = torch.full(size=(window_size, 1, 1), fill_value=1.0 / window_size, dtype=torch.float32, device="cuda")
+    def inner(frames: torch.Tensor):
         '''
         Compute moving mean of `frames`
 
@@ -50,9 +51,29 @@ def get_moving_mean(window_size):
             `kernel_time_dimension_length`: Length of the time dimension of the kernel used in the moving mean
         '''
         with torch.no_grad():
-            mov_mean = frames.unfold(0, window_size, 1).mean(-1)
-            return mov_mean
-    return inner
+            n, c, h, w = frames.shape
+            # flat = frames.flatten(start_dim=2)
+            # print(f"{flat.shape = }")
+            # flat_mov_mean = F.conv1d(flat, kernel, groups=c, padding=0)
+            # print(f"{flat_mov_mean.shape = }")
+            # return einops.rearrange(flat_mov_mean, "t c (h w) -> t c h w", h=h, w=w)
+            # # mov_mean = frames.unfold(0, window_size, 1)[:-1].mean(-1)
+            # # return mov_mean
+            # Reshape to (N, C_in, L) for conv1d where:
+            # N = C*H*W independent temporal signals, C_in = 1, L = T
+            x = frames.permute(1, 2, 3, 0).contiguous().view(-1, 1, n)
+
+            # Box filter kernel for mean: shape (C_out=1, C_in=1, K=window)
+            kernel = torch.full((1, 1, window_size), 1.0 / window_size, device=frames.device, dtype=frames.dtype)
+
+            # Valid convolution: no padding => output length T-window+1
+            y = F.conv1d(x, kernel, padding=0)
+
+            # Reshape back to (T', C, H, W)
+            T_out = y.shape[-1]
+            out = y.view(c, h, w, T_out).permute(3, 0, 1, 2).contiguous()
+            return out
+    return with_manual_op(inner, equivalent_slicing_op=(slice(window_size // 2, - (window_size // 2)), slice(None), slice(None), slice(None)))
 
 
 @torch.no_grad

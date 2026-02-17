@@ -86,7 +86,8 @@ def subbatch_emit_indices(dp: DataPipe, idx: slice, batch_size: int=256, progres
     pb = (lambda it: get_progress_bar()(it, desc=pb_description)) if progress_bar else (lambda it: it)
     for i in pb(range(start, stop, batch_size)):
         batch_stop = min(i + batch_size, stop)
-        yield dp[i:batch_stop], slice(i, batch_stop)
+        idx = slice(i, batch_stop)
+        yield dp[i:batch_stop][:idx.stop - idx.start], idx 
 
 def subbatch(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm, pb_description: Optional[str]=None) -> Iterator[torch.Tensor]:
     if progress_bar and pb_description is None:

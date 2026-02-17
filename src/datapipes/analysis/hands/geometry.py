@@ -142,7 +142,7 @@ def center_point_in_mask_boundaries(point_to_center: torch.Tensor, point_in_segm
         centered_point = torch.stack(boundary_points).sum(0) * 0.5
 
         # Abort if centered point is too far from original. This could e.g. mean that one of the border borders we found belongs to a different finger
-        if vec_len(centered_point - point_to_center) > (vec_len(point_in_segment - point_to_center) * 0.3):
+        if vec_len(centered_point - point_to_center) > (vec_len(point_in_segment - point_to_center) * 0.25):
             return point_to_center
 
         return (centered_point * strength) + (point_to_center * (1 - strength))
