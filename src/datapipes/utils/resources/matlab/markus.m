@@ -1,4 +1,4 @@
-datapipes = importDatapipesPython();
+datapipes = MatDatapipes.importDatapipesPython();
 %%
 path = "path/to/hands.rls";
 arr = MatDatapipes.loadHandsRLS(path, false);
@@ -15,7 +15,7 @@ MatDatapipes.quickPlot(sc(:, :, 1))
 MatDatapipes.quickPlot(left);
 MatDatapipes.quickPlot(right);
 %%
-timestamps = arr.getTimestamps()
+timestamps = arr.getTimestamps();
 
 %[appendix]{"version":"1.0"}
 %---

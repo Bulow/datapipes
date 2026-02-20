@@ -70,11 +70,20 @@ def print_help(argv: Optional[list[str]] = None) -> int:
     for t in tools.keys():
         print(f"\t{t}", end="\n")
 
+def segment_hands(argv: Optional[list[str]] = None) -> int:
+    from datapipes.analysis.hands.rls_to_seg_masks import create_segmentation_masks
+    in_path = argv[0]
+    out_path = argv[1]
+
+    create_segmentation_masks(in_path, out_path)
+
+
 tools = {
     "help": print_help,
     "init": init,
     "dataset-wrangler": dataset_wrangler,
     "init-matlab": matlab_installer,
+    "segment-hands": segment_hands
 }
 
 def main(argv: Optional[list[str]] = None) -> int:
