@@ -90,7 +90,7 @@ class Detector:
 
 def extract_landmarks(raw_landmarks_mediapipe_fmt: Dict, img: torch.Tensor) -> Dict[str, torch.Tensor]:
     hand_indices = {cat[0].category_name:cat[0].index for cat in raw_landmarks_mediapipe_fmt.handedness}
-    hands_landmarks_px = {hand_name.lower():landmarks_to_tensor(raw_landmarks_mediapipe_fmt, img_shape=img.shape, hand_idx=idx, coord_type="px").to("cuda") for hand_name, idx in hand_indices.items()}
+    hands_landmarks_px = {hand_name.lower():landmarks_to_tensor(raw_landmarks_mediapipe_fmt, img_shape=img.shape, hand_idx=idx, coord_type="px") for hand_name, idx in hand_indices.items()}
     return hands_landmarks_px
 
 def detect_landmarks(img_data: torch.Tensor, detector: Optional[Detector]=None) -> Dict:

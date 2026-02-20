@@ -17,16 +17,17 @@ import plotly.express as px
 
 class HandSegments:
 
-    def __init__(self, device="cpu"):
+    def __init__(self, device="cuda"):
+        self.device = device
         self.segs: Dict[str, torch.Tensor] = {}
         self.weights: List[float] = []
         self.biases: List[float] = []
 
         self._current_weight: float = 1.0
         self._current_bias: float = 0.0
-        self._relative_origin: torch.Tensor = torch.zeros(size=(1, 1, 2), dtype=torch.float32, device="cpu")
+        self._relative_origin: torch.Tensor = torch.zeros(size=(1, 1, 2), dtype=torch.float32, device=self.device)
 
-        self.device = device
+        
 
     def add(self, new_segs: Dict[str, torch.Tensor]):
         self.segs.update(new_segs)
@@ -147,7 +148,7 @@ def build_segments(markers_px: Dict[str, torch.Tensor], mask: torch.Tensor) -> t
     # -------------------------------
     # Setup
     # -------------------------------
-    _, h, w = mask.shape
+    h, w = mask.shape[-2:]
     # landmarks_px = landmarks_px.to(device="cuda", dtype=torch.float32)
     # markers_px, markers_idx = add_custom_markers(landmarks_px, mask=mask)
 

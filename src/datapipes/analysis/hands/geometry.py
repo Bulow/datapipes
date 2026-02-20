@@ -47,6 +47,8 @@ def sample_line(img: torch.Tensor, start_point: torch.Tensor, end_point: torch.T
         (N,) tensor of sampled values along the line (bilinear interpolation).
         N is chosen as ceil(max(|dx|, |dy|)) + 1 (like a dense Bresenham-style sampling).
     """
+    while img.ndim > 2 and img.shape[0] == 1:
+        img = img.squeeze(0)
     if img.ndim != 2:
         raise ValueError(f"img must be (H, W). Got {tuple(img.shape)}")
 
