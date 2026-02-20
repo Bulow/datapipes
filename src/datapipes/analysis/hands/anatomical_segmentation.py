@@ -406,7 +406,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         mask = mask.squeeze(0)
     mask_cpu = mask.to("cpu")
     # plot(mask)
-    print(f"{img_data.shape = }, {mask.shape = }")
+    # print(f"{img_data.shape = }, {mask.shape = }")
     gradient = _prepare_gradients(img_data_gpu.mean(0), mask)
     # plot(gradient)
 # 
