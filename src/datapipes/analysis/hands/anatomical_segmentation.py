@@ -186,6 +186,8 @@ def _compute_normal_map(image: torch.Tensor) -> torch.Tensor:
 
 def _prepare_gradients(img_data: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     # Log space to be intensity scale invariant
+    # print(f"{img_data.shape = }")
+    # plot(img_data)
     hand_min = img_data[mask > 0].min()
     # print(f"{hand_min = }")
     img_data[mask == 0] = hand_min
@@ -396,10 +398,20 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         bboxes: Dict[str, Dict[str, int]]
         anatomy_maps: Dict[str, torch.Tensor]
     """
-    img_data = img_data.to("cuda")
-    mask = hand_segmentation.get_hand_mask(img_data).to("cuda")
+
+    img_data_gpu = img_data.to("cuda")
+    # print(f"{img_data.shape = }")
+    mask = hand_segmentation.get_hand_mask(img_data_gpu)
+    if mask.ndim == 4:
+        mask = mask.squeeze(0)
+    mask_cpu = mask.to("cpu")
     # plot(mask)
-    gradient = _prepare_gradients(img_data.mean(0), mask).to("cuda")
+    # print(f"{img_data.shape = }, {mask.shape = }")
+    gradient = _prepare_gradients(img_data_gpu.mean(0), mask)
+    # plot(gradient)
+# 
+    # print(f"{img_data.shape = }, {mask.shape = }, {gradient.shape = }")
+    
     # raw_landmarks_mediapipe_fmt = hand_landmarks.detect_landmarks(img_data=img_data.mean(0), detector=detector)
 
     # hand_indices = {cat[0].category_name:cat[0].index for cat in raw_landmarks_mediapipe_fmt.handedness}
@@ -410,7 +422,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
 
 
     # hands_segments_px = {hand_name:hand_anatomy.build_segments(normalized_landmarks=normalized_landmarks_on_hand, mask=mask).to("cuda") for hand_name, normalized_landmarks_on_hand in hands_landmarks_normalized.items()}
-    markers_named = {hand_name:named_markers.add_custom_markers(hand_marks, mask=mask)for hand_name, hand_marks in hands_landmarks_px.items()}
+    markers_named = {hand_name:named_markers.add_custom_markers(hand_marks, mask=mask_cpu) for hand_name, hand_marks in hands_landmarks_px.items()}
 
     name_to_idx: Dict[str, int] = {}
     markers = {}
@@ -440,7 +452,7 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
 
     # markers_px_ema = detector.ema(markers=markers_px, alpha=0.9)
 
-    hands_segments_px: Dict[str, segments.HandSegments] = {hand_name:segments.build_segments(markers_px=hand_markers, mask=mask) for hand_name, hand_markers in markers_named_ema.items()}
+    hands_segments_px: Dict[str, segments.HandSegments] = {hand_name:segments.build_segments(markers_px=hand_markers, mask=mask_cpu) for hand_name, hand_markers in markers_named_ema.items()}
 
     # hands_segments_px = {hand_name:segments_hand for hand_name, segments_hand in segments}
 
@@ -511,6 +523,19 @@ def segmentation_mask_op(frames_per_mask: int=256) -> Callable[[torch.Tensor], t
         
         return torch.stack(out_list, dim=0)
     return with_manual_op(_segmentation_mask_op, equivalent_slicing_op=(slice(None, None, frames_per_mask), slice(None), slice(None), slice(None)))
+
+def distinct_colors_op() -> Callable[[torch.Tensor], torch.Tensor]:
+    @torch.no_grad
+    def _distinct_colors_op(frames: torch.Tensor) -> torch.Tensor:
+        out_list = []
+        for frame in frames:
+        #     # logger.info(f"{batch.shape = }")
+            out_list.append(mask_to_distinct_colors(mask=frame))
+        # # logger.info(f"{len(out_list) = }")
+        return torch.stack(out_list, dim=0)
+
+    return with_manual_op(_distinct_colors_op, equivalent_slicing_op=(slice(None), slice(None), slice(None), slice(None)))
+
 
 def distinct_segmentation_mask_op(frames_per_mask: int=256, stride: Optional[int]=None, use_surface_optimization: bool=True) -> Callable[[torch.Tensor], torch.Tensor]:
     detector = hand_landmarks.Detector()
