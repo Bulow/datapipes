@@ -67,7 +67,7 @@ def _overlay_points_plotly(image: torch.Tensor, points: torch.Tensor, names: Opt
     fig.show()
 
 
-def _overlay_points_and_lines_plotly(image: torch.Tensor, points: torch.Tensor, names: Optional[Iterable[str]]=None, line_segments: Optional[torch.Tensor]=None, line_segments_names: Optional[Iterable[str]]=None):
+def _overlay_points_and_lines_plotly(image: torch.Tensor, points: Optional[torch.Tensor]=None, names: Optional[Iterable[str]]=None, line_segments: Optional[torch.Tensor]=None, line_segments_names: Optional[Iterable[str]]=None):
     """
     Overlays points and line segments onto a (1, H, W) tensor with custom tooltips.
     """
@@ -80,26 +80,27 @@ def _overlay_points_and_lines_plotly(image: torch.Tensor, points: torch.Tensor, 
         binary_string=True
     )
 
-    # Points
-    x_coords = points[:, 0].cpu().numpy()
-    y_coords = points[:, 1].cpu().numpy()
+    if points is not None:
+        # Points
+        x_coords = points[:, 0].cpu().numpy()
+        y_coords = points[:, 1].cpu().numpy()
 
-    colors = ['red' if i % (len(points) / 2) < 21 else 'green' for i in range(len(points))]
-    fig.add_trace(
-        go.Scatter(
-            x=x_coords,
-            y=y_coords,
-            mode='markers+text' if names else 'markers',
-            marker=dict(
-                color=colors,
-                size=10,
-                line=dict(width=2, color='white')
-            ),
-            hovertext=names,
-            hoverinfo="text+y+x",
-            name='Points'
+        colors = ['red' if i % (len(points) / 2) < 21 else 'green' for i in range(len(points))]
+        fig.add_trace(
+            go.Scatter(
+                x=x_coords,
+                y=y_coords,
+                mode='markers+text' if names else 'markers',
+                marker=dict(
+                    color=colors,
+                    size=10,
+                    line=dict(width=2, color='white')
+                ),
+                hovertext=names,
+                hoverinfo="text+y+x",
+                name='Points'
+            )
         )
-    )
     
     # Line segments
     if line_segments is not None:
@@ -111,6 +112,8 @@ def _overlay_points_and_lines_plotly(image: torch.Tensor, points: torch.Tensor, 
         x = [seg[:, 0] for seg in segs]
         y = [seg[:, 1] for seg in segs]
 
+        if line_segments_names is None:
+            line_segments_names = [str(i) for i in range(len(segs))]
         for xx, yy, name in zip(x, y, line_segments_names):
 
             fig.add_trace(
@@ -209,8 +212,8 @@ def create_distinct_colormap(img: torch.Tensor) -> torch.Tensor:
 
 def get_edge_mask(m: torch.Tensor, boundary_thickness: int=1) -> torch.BoolTensor:
     H, W = m.shape[-2:]
-    mm = m.to("cuda", dtype=torch.int16)
-    edge = torch.zeros((H, W), dtype=torch.bool, device="cuda")
+    mm = m.to(m.device, dtype=torch.int16)
+    edge = torch.zeros((H, W), dtype=torch.bool, device=m.device)
 
     edge[:, 1:] |= (mm[:, 1:] != mm[:, :-1])
     edge[:, :-1] |= (mm[:, :-1] != mm[:, 1:])
@@ -245,11 +248,13 @@ def mask_to_distinct_colors(
 
     if m.dtype != torch.uint8:
         raise ValueError("mask must be uint8")
+    
+    m = m.to("cuda")
 
     H, W = m.shape[-2:]
     device = m.device
 
-    lut = create_distinct_colormap(m).to("cuda")
+    lut = create_distinct_colormap(m).to(device)
     rgb = lut[m.to(torch.long)].permute(2, 0, 1).contiguous()
     # rgb = einops.rearrange(lut[m.to(torch.long)], "h w c -> c h w").contiguous().to("cuda")
 

@@ -13,21 +13,62 @@ import logging
 import traceback
 import builtins
 from datapipes.utils import output_server
+from typing import Literal
+
+import os
+
+
+
 
 _logging_enabled: bool = False
 
-def enable_logging(level=logging.INFO):
-    
+def enable_logging(level=logging.INFO, mode: Literal["code_position", "time", "function_name"]="code_position"):
+    match mode:
+        case "time":
 
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('datapipes.log'),
-            logging.StreamHandler()
-        ]
-    )
+            # Set up logging
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler('datapipes.log'),
+                    logging.StreamHandler()
+                ]
+            )
+        case "code_position":
+            # logging.basicConfig(
+            #     level=logging.INFO,
+            #     format="%(filename)s:%(lineno)d [%(funcName)s]: %(message)s",
+            #     handlers=[
+            #         logging.FileHandler('datapipes.log'),
+            #         logging.StreamHandler()
+            #     ]
+            # )
+            # Save the original factory
+            old_factory = logging.getLogRecordFactory()
+            def record_factory(*args, **kwargs):
+                record = old_factory(*args, **kwargs)
+                record.shortpath = os.path.relpath(record.pathname)
+                return record
+
+            logging.setLogRecordFactory(record_factory)
+
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(shortpath)s:%(lineno)d [%(funcName)s]: %(message)s"
+            )
+
+        case "function_name":
+            logging.basicConfig(
+                level=logging.INFO,
+                format="[%(funcName)s]: %(message)s",
+                handlers=[
+                    logging.FileHandler('datapipes.log'),
+                    logging.StreamHandler()
+                ]
+            )
+    global _logging_enabled
+    _logging_enabled = True
 
 def get_logger(name: str): # -> logger.Logger:
     if not _logging_enabled:

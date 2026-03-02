@@ -23,12 +23,12 @@ from typing import Dict
 from contextlib import contextmanager
 from datapipes.analysis.hands import fast_anatomical_segmentation, anatomical_segmentation
 from pathlib import Path
-from datapipes.save_datapipe import datapipe_to_rls
 import torch
 
+from datapipes.save_datapipe import datapipe_to_rls, datapipe_to_lossless_hevc_mp4
+
 def compute_segmentation_masks(input_rls_path: str|Path) -> torch.Tensor:
-    path: str = R"C:\Workspace\DataAnalysis\compression_paper\input_datasets\hands.rls"
-    dataset = datasets.load_dataset(path, cache_strategy="no_caching", switch_wh_metadata_read_order=True)
+    dataset = datasets.load_dataset(input_rls_path, cache_strategy="no_caching", switch_wh_metadata_read_order=True)
 
     dp = (
         DataPipe(dataset)
@@ -45,4 +45,13 @@ def create_segmentation_masks(input_rls_path: str|Path, output_path: str|Path):
     masks = compute_segmentation_masks(input_rls_path=input_rls_path)
 
     datapipe_to_rls(DataPipe(masks), out_path=output_path)
+
+
+def create_segmentation_masks_video(input_rls_path: str|Path, output_path: str|Path, use_distinct_color_visualization: bool=True):
+    masks = compute_segmentation_masks(input_rls_path=input_rls_path)
+
+    if use_distinct_color_visualization:
+        masks = anatomical_segmentation.distinct_colors_op()(masks)
+
+    datapipe_to_lossless_hevc_mp4(DataPipe(masks), out_path=output_path)
 

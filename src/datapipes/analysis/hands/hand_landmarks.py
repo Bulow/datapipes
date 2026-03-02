@@ -38,10 +38,10 @@ def create_detector(num_hands: int=2, mode: Literal["image", "video"]="video") -
 
 
 class Detector:
-    def __init__(self, fps: float=200, num_hands: int=2):
+    def __init__(self, fps: float=100, num_hands: int=2):
         self.detector: DetectorType = create_detector(num_hands=num_hands)
         self.fps: float = fps
-        self._n_frame: int = 0
+        self._n_frame: int = 1
 
         self.previous = None #: Dict[str, torch.Tensor] = {}
         self.first_run: bool = True
@@ -94,12 +94,12 @@ def extract_landmarks(raw_landmarks_mediapipe_fmt: Dict, img: torch.Tensor) -> D
     return hands_landmarks_px
 
 def detect_landmarks(img_data: torch.Tensor, detector: Optional[Detector]=None) -> Dict:
-
     # TODO: Remove
     # img_data = img_data.flip(dims=[2])
     # img_data = einops.rearrange(img_data, "c h w -> c w h")
 
     if detector is None:
+        raise RuntimeError(f"{detector = }")
         detector = Detector(num_hands=2)
 
     # Convert to numpy grayscale RGB (h w c) uint8
@@ -107,12 +107,29 @@ def detect_landmarks(img_data: torch.Tensor, detector: Optional[Detector]=None) 
 
     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_data)
 
-    detection_result = detector.detector.detect_for_video(image, detector.next_timestamp())
+
+    # detection_result = detector.detector.detect_for_video(image, detector.next_timestamp())
+    detection_result = detect_with_retries(image=image, detector=detector, n_retries=3)
+
+    
 
     # annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
 
     # plots.plot_raw(einops.rearrange(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR), "h w c -> c h w"), cmap="gray")
     return detection_result
+
+def detect_with_retries(image: mp.Image, detector: Detector, n_retries: int=3) -> Dict:
+    n_try = 0
+
+    while n_try < n_retries:
+        try:
+            detection_result = detector.detector.detect_for_video(image, detector.next_timestamp())
+            return detection_result
+
+        except KeyError as ex:
+            n_try += 1
+            if n_try > n_retries:
+                raise ex
 
 
 

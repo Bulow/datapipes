@@ -118,7 +118,7 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, batch_size=512, fps: 
             formatted_batch = _get_nv12(batch).cpu().numpy()
         else:
             if v_min_max is None:
-                v_min_max = torch.quantile(batch, torch.tensor((0.02, 0.98), device=batch.device))
+                v_min_max = torch.quantile(batch[0].to(torch.float32), torch.tensor((0.02, 0.98), device=batch.device))
                 print(f"{v_min_max = }")
             if batch.shape[-3] == 1:
                 if batch.dtype == torch.uint8:
