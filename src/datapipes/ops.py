@@ -15,7 +15,7 @@ from typing import Optional, Tuple, Any, List, Iterator
 # from datapipes.nd_windows import NdValidWindow, NdAutoUnpaddingWindow
 # from datapipes import subbatching
 
-from datapipes.manual_ops import with_manual_op
+from datapipes.manual_ops import with_manual_op, with_manual_unpad
 
 
 class Ops:
@@ -140,12 +140,16 @@ class Ops:
         Convert to GPU and/or dtype
         '''
         def _temporal_diff(frames: torch.Tensor):
+            print(f"{frames.shape = }")
             # frames = frames.to(torch.float32) / 255.0
             # print(f"{frames.shape = }, {frames.dtype = }, {frames.device = }")
             
             # print(f"{frames[d_index:].shape = }, {frames[:-d_index].shape = }")
             return (frames[d_index:] - frames[:-d_index])
-        return with_manual_op(_temporal_diff, equivalent_slicing_op=((slice(0, - (d_index)), slice(None), slice(None), slice(None))))
+        # return with_manual_op(_temporal_diff, equivalent_slicing_op=((slice(0, - (d_index)), slice(None), slice(None), slice(None))))
+        # return _temporal_diff
+        
+        return with_manual_unpad(_temporal_diff, padding=1)
 
     
 

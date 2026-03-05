@@ -103,7 +103,7 @@ def accumulate(dp: DataPipe, idx: slice, batch_size: int=256, progress_bar: Call
     
     shape = tuple((slc.stop - slc.start) // slc.step for slc in normalized_idx)
     # print(f"{shape = }")
-    out = torch.empty(size=shape, dtype=dp.dtype, device=destination_device)
+    out = torch.empty(size=shape, dtype=dp.dtype, device="cpu")
     for batch, batch_idx in subbatch_emit_indices(dp=dp, idx=idx, batch_size=batch_size, progress_bar=progress_bar):
         out[batch_idx] = batch
     return out

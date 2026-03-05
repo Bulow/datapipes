@@ -20,6 +20,9 @@ from datapipes import sinks
 import kornia
 import einops
 
+import logging
+logger = logging.getLogger(__file__)
+
 from datapipes.plotting import plot, crop_to_common_size
 
 def cc_get_hist(frames: torch.Tensor, num_bins=256, min_val=0, max_val=0) -> torch.Tensor:
@@ -138,6 +141,7 @@ def _clean_mask(mask: torch.Tensor) -> torch.Tensor:
 def get_hand_mask(frames: torch.Tensor) -> torch.Tensor:
     # Get mask based on boolean and morphological manipulation of std and mean
     # frames = torch.log(map01(frames) + 1e-5)
+    # logger.info(f"{frames.shape = }")
     while frames.ndim < 5:
         frames = frames.unsqueeze(0)
 
@@ -170,7 +174,12 @@ def apply_mask(mask: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:
     return with_manual_op(_apply_mask)
 
 def get_mask_op(n_frames_per_mask: int=256):
-    return with_manual_op(get_hand_mask, Slicer[::n_frames_per_mask, :, :, :])
+    def _get_mask_op(frames: torch.Tensor) -> torch.Tensor:
+        max_length = (len(frames) // n_frames_per_mask) * n_frames_per_mask
+        frames = frames[:max_length]
+        input_frames = einops.rearrange(frames, "(b t) 1 h w -> b t 1 h w", t=n_frames_per_mask)
+        return get_hand_mask(input_frames)
+    return with_manual_op(_get_mask_op, Slicer[::n_frames_per_mask, :, :, :])
 
 def segment_datapipe(dp: DataPipe, idx: slice=slice(None), n_frames_per_mask: int=256) -> torch.Tensor:
     return sinks.accumulate(dp | get_mask_op(n_frames_per_mask=n_frames_per_mask), idx, batch_size=1, progress_bar=True)

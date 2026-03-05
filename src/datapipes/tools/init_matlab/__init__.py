@@ -19,7 +19,7 @@ def install_datapipes_in_matlab():
     install_matlab_library(library_dir=install_folder)
 
     print(f"Extracting sample files")
-    sample_files = ["brrr.m", "quickstart.m", "markus.m"]
+    sample_files = ["brrr.m", "quickstart.m", "markus.m", "hand_segmentation.m"]
 
     sample_dest_folder = Path.cwd()
     for s in sample_files:

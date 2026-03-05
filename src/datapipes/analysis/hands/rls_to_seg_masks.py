@@ -16,18 +16,16 @@ from datapipes.analysis.hands import segments, named_markers
 from datapipes.analysis.hands import visualization
 from typing import Callable, Any, Tuple, Iterable, List, Dict, Optional
 
-from datapipes.analysis.hands.fast_anatomical_segmentation import watch
-
 from datapipes.analysis.hands import hand_landmarks
 from typing import Dict
 from contextlib import contextmanager
-from datapipes.analysis.hands import fast_anatomical_segmentation, anatomical_segmentation
+from datapipes.analysis.hands import anatomical_segmentation
 from pathlib import Path
 import torch
 
 from datapipes.save_datapipe import datapipe_to_rls, datapipe_to_lossless_hevc_mp4
 
-def compute_segmentation_masks(input_rls_path: str|Path) -> torch.Tensor:
+def compute_segmentation_masks(input_rls_path: str|Path, frames_per_mask: int=256) -> torch.Tensor:
     dataset = datasets.load_dataset(input_rls_path, cache_strategy="no_caching", switch_wh_metadata_read_order=True)
 
     dp = (
@@ -35,7 +33,7 @@ def compute_segmentation_masks(input_rls_path: str|Path) -> torch.Tensor:
         | Ops.bytes_to_float01_gpu 
     )
 
-    seg_dp = dp | anatomical_segmentation.segmentation_mask_op(frames_per_mask=256) #| contrast.get_moving_mean(window_size=32) # | fast_anatomical_segmentation.distinct_colors_op()
+    seg_dp = dp | anatomical_segmentation.segmentation_mask_op(frames_per_mask=frames_per_mask) #| contrast.get_moving_mean(window_size=32) # | fast_anatomical_segmentation.distinct_colors_op()
     # print(f"{seg_dp.shape = }")
 
     masks = sinks.accumulate(seg_dp, slice(None), batch_size=8)
@@ -47,11 +45,11 @@ def create_segmentation_masks(input_rls_path: str|Path, output_path: str|Path):
     datapipe_to_rls(DataPipe(masks), out_path=output_path)
 
 
-def create_segmentation_masks_video(input_rls_path: str|Path, output_path: str|Path, use_distinct_color_visualization: bool=True):
-    masks = compute_segmentation_masks(input_rls_path=input_rls_path)
+def create_segmentation_masks_video(input_rls_path: str|Path, output_path: str|Path, use_distinct_color_visualization: bool=True, frames_per_mask: int=256):
+    masks = compute_segmentation_masks(input_rls_path=input_rls_path, frames_per_mask=frames_per_mask)
 
     if use_distinct_color_visualization:
         masks = anatomical_segmentation.distinct_colors_op()(masks)
 
-    datapipe_to_lossless_hevc_mp4(DataPipe(masks), out_path=output_path)
+    datapipe_to_lossless_hevc_mp4(DataPipe(masks), out_path=output_path, overwrite=True)
 

@@ -119,6 +119,10 @@ class L(StrEnum):
     arm_spacer_middle_distal = auto()
     arm_spacer_ring_distal = auto()
     arm_spacer_pinky_distal = auto()
+
+    outside_radial_arm = auto()
+    outside_ulnar_arm = auto()
+    
     
     
 
@@ -285,44 +289,45 @@ def add_custom_markers(landmarks_px: torch.Tensor, mask: torch.Tensor) -> Tuple[
 
     arm_dir = markers[L.wrist] - arm_seed
 
-    outside_radial_arm = project_point_onto_line(
+    markers[L.outside_radial_arm] = project_point_onto_line(
         origin=arm_seed,
-        vec=(markers[L.thumb_mcp] - arm_seed) * 1.2,
+        vec=(markers[L.thumb_mcp] - arm_seed) * 1.5,
         dir=torch.stack((-arm_dir[1], arm_dir[0]))
     )
-    outside_ulnar_arm = project_point_onto_line(
+    markers[L.outside_ulnar_arm] = project_point_onto_line(
         origin=arm_seed,
-        vec=markers[L.pinky_mcp] - arm_seed,
+        vec=(markers[L.pinky_mcp] - arm_seed)  * 1.5,
         dir=torch.stack((-arm_dir[1], arm_dir[0]))    
     )
 
     arm_proximal_edges = get_transition_points_along_line(
         img=mask[0],
-        start_point=outside_radial_arm,
-        end_point=outside_ulnar_arm,
+        start_point=markers[L.outside_radial_arm],
+        end_point=markers[L.outside_ulnar_arm],
     )
     if len(arm_proximal_edges) == 2:
         markers[L.proximal_arm_radial] = arm_proximal_edges[0]
         markers[L.proximal_arm_ulnar] = arm_proximal_edges[1]
     else:
-        markers[L.proximal_arm_radial] = outside_radial_arm
-        markers[L.proximal_arm_ulnar] = outside_ulnar_arm
+        markers[L.proximal_arm_radial] = markers[L.outside_radial_arm]
+        markers[L.proximal_arm_ulnar] = markers[L.outside_ulnar_arm]
 
+    wrist_edge_dx = 30 # px
     arm_distal_edges = get_transition_points_along_line(
         img=mask[0],
-        start_point=outside_radial_arm + (20 * normalize(arm_dir)),
-        end_point=outside_ulnar_arm + (20 * normalize(arm_dir)),
+        start_point=markers[L.outside_radial_arm] + (wrist_edge_dx * normalize(arm_dir)),
+        end_point=markers[L.outside_ulnar_arm] + (wrist_edge_dx * normalize(arm_dir)),
     )
 
     if len(arm_distal_edges) == 2:
         markers[L.distal_arm_radial] = arm_distal_edges[0]
         markers[L.distal_arm_ulnar] = arm_distal_edges[1]
     else:
-        markers[L.distal_arm_radial] = outside_radial_arm + (20 * normalize(arm_dir))
-        markers[L.distal_arm_ulnar] = outside_ulnar_arm + (20 * normalize(arm_dir))
+        markers[L.distal_arm_radial] = markers[L.outside_radial_arm] + (wrist_edge_dx * normalize(arm_dir))
+        markers[L.distal_arm_ulnar] = markers[L.outside_ulnar_arm] + (wrist_edge_dx * normalize(arm_dir))
     
-    markers[L.proximal_arm] = 0.5 * torch.stack(arm_proximal_edges).sum(0)
-    markers[L.distal_arm] = 0.5 * torch.stack(arm_distal_edges).sum(0)
+    markers[L.proximal_arm] = 0.5 * torch.stack((markers[L.proximal_arm_radial], markers[L.proximal_arm_ulnar])).sum(0)
+    markers[L.distal_arm] = 0.5 * torch.stack((markers[L.distal_arm_radial], markers[L.distal_arm_ulnar])).sum(0)
 
 
     # ------------------------

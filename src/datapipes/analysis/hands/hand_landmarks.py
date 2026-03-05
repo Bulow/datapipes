@@ -38,7 +38,7 @@ def create_detector(num_hands: int=2, mode: Literal["image", "video"]="video") -
 
 
 class Detector:
-    def __init__(self, fps: float=100, num_hands: int=2):
+    def __init__(self, fps: float=200, num_hands: int=2):
         self.detector: DetectorType = create_detector(num_hands=num_hands)
         self.fps: float = fps
         self._n_frame: int = 1
@@ -128,7 +128,9 @@ def detect_with_retries(image: mp.Image, detector: Detector, n_retries: int=3) -
 
         except KeyError as ex:
             n_try += 1
+            
             if n_try > n_retries:
+                print(f"Landmark detection failed {n_retries} times. Giving up.")
                 raise ex
 
 

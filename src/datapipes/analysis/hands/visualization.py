@@ -18,6 +18,8 @@ from datapipes.plotting.torch_colormap import TorchColormap
 from pathlib import Path
 
 from datapipes.plotting import map01
+from dataclasses import dataclass
+from typing import Literal
 
 def _overlay_points_plotly(image: torch.Tensor, points: torch.Tensor, names: Optional[Iterable[str]]=None):
     """
@@ -138,23 +140,35 @@ def _overlay_points_and_lines_plotly(image: torch.Tensor, points: Optional[torch
     # fig.show()
     return fig
 
-def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_background: Optional[torch.Tensor]=None, html_output_path: Optional[Path|str]=None, show_fig: bool=True):
-    raw_img = input_frames.mean(0)
-    result = hand_landmarks.detect_landmarks(raw_img)
-    mask = hand_segmentation.get_hand_mask(input_frames).to("cuda")
 
-    def get_points_and_lines_for_hand(hand_idx: int):
-        points = hand_landmarks.landmarks_to_tensor(result, img_shape=mask.shape, hand_idx=hand_idx, coord_type="px")
+@dataclass
+class HandsGeometry:
+    points: torch.Tensor
+    point_names: Iterable[str]
+    lines: torch.Tensor
+    line_names: Iterable[str]
+
+def get_geometry_from_hands(input_frames: torch.Tensor, detector: Optional[hand_landmarks.Detector]=None) -> HandsGeometry:
+    raw_img = input_frames.mean(0)
+    # result = hand_landmarks.detect_landmarks(raw_img, detector=detector)
+    result = detector.detect(raw_img)
+    mask = hand_segmentation.get_hand_mask(input_frames).to("cuda")
+    mask_cpu = mask.cpu()[0]
+
+    def get_points_and_lines_for_hand(hand_name: Literal["left", "right"]):
+        # points = hand_landmarks.landmarks_to_tensor(result, img_shape=mask.shape, hand_idx=hand_idx, coord_type="px")
         # rich.print(f"{points[hand_anatomy.L.wrist] = }")
-        lines: segments.HandSegments = segments.build_segments(points, mask)
+        markers_dict = result[hand_name]
+        markers_dict, markers_idx = named_markers.add_custom_markers(markers_dict, mask=mask_cpu)     
+
+        points = torch.stack(tuple(markers_dict.values()))
+        lines: segments.HandSegments = segments.build_segments(markers_dict, mask_cpu)    
         
-        markers, markers_idx = named_markers.add_custom_markers(points, mask=mask)
-        points = torch.stack(tuple(markers.values()))
         _, h, w = raw_img.shape
         
         points_px = points# * torch.tensor([[w - 1, h - 1]], device=points.device)
 
-        markers_px = {k:points_px[markers_idx[k]] for k in markers.keys()}
+        markers_px = {k:points_px[markers_idx[k]] for k in markers_dict.keys()}
 
         return points_px, lines, markers_px
     
@@ -162,7 +176,7 @@ def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_backgro
     hand_segments = []
     point_names = []
 
-    for points, lines, markers in (get_points_and_lines_for_hand(i) for i in range(2)):
+    for points, lines, markers in (get_points_and_lines_for_hand(i) for i in ("left", "right")):
         all_points.extend(points)
         hand_segments.append(lines)
         point_names.extend([name for name in markers.keys()])
@@ -171,7 +185,48 @@ def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_backgro
     lines = torch.cat(tuple(segs.get_segments_tensor() for segs in hand_segments), dim=1)
     line_names = list([name for hs in hand_segments for name in hs.segs.keys()])
 
-    fig = _overlay_points_and_lines_plotly(image=overlay_geometry_background or raw_img, points=points, names=point_names, line_segments=lines, line_segments_names=line_names)
+    return HandsGeometry(
+        points=points, 
+        point_names=point_names, 
+        lines=lines, 
+        line_names=line_names,
+    )
+
+def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_background: Optional[torch.Tensor]=None, html_output_path: Optional[Path|str]=None, show_fig: bool=True):
+    geometry = get_geometry_from_hands(input_frames=input_frames)
+    # raw_img = input_frames.mean(0)
+    # result = hand_landmarks.detect_landmarks(raw_img)
+    # mask = hand_segmentation.get_hand_mask(input_frames).to("cuda")
+
+    # def get_points_and_lines_for_hand(hand_idx: int):
+    #     points = hand_landmarks.landmarks_to_tensor(result, img_shape=mask.shape, hand_idx=hand_idx, coord_type="px")
+    #     # rich.print(f"{points[hand_anatomy.L.wrist] = }")
+    #     lines: segments.HandSegments = segments.build_segments(points, mask)
+        
+    #     markers, markers_idx = named_markers.add_custom_markers(points, mask=mask)
+    #     points = torch.stack(tuple(markers.values()))
+    #     _, h, w = raw_img.shape
+        
+    #     points_px = points# * torch.tensor([[w - 1, h - 1]], device=points.device)
+
+    #     markers_px = {k:points_px[markers_idx[k]] for k in markers.keys()}
+
+    #     return points_px, lines, markers_px
+    
+    # all_points = []
+    # hand_segments = []
+    # point_names = []
+
+    # for points, lines, markers in (get_points_and_lines_for_hand(i) for i in range(2)):
+    #     all_points.extend(points)
+    #     hand_segments.append(lines)
+    #     point_names.extend([name for name in markers.keys()])
+    
+    # points = torch.stack(all_points, dim=0)
+    # lines = torch.cat(tuple(segs.get_segments_tensor() for segs in hand_segments), dim=1)
+    # line_names = list([name for hs in hand_segments for name in hs.segs.keys()])
+
+    fig = _overlay_points_and_lines_plotly(image=overlay_geometry_background or input_frames.mean(0), points=geometry.points, names=geometry.point_names, line_segments=geometry.lines, line_segments_names=geometry.line_names)
 
     if html_output_path is not None:
         interactive_plots.create_standalone_html_plot(fig, html_output_path)
@@ -502,6 +557,8 @@ def animated_scatter_2d(
         frames=frames,
         layout=go.Layout(
             title=title,
+            height=ylim[1] - ylim[0],
+            width=xlim[1] - xlim[0],
             xaxis=dict(range=list(xlim), autorange=False, zeroline=False),
             yaxis=dict(range=list(ylim), autorange=False, zeroline=False),
             updatemenus=[

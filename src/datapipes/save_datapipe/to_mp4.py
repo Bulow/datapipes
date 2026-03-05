@@ -66,7 +66,7 @@ def _datapipe_to_video(data: DataPipe, out_path: Path|str, batch_size=512, fps: 
     """
     data = data | Ops.gpu
     assert len(data.shape) == 4
-    assert data.shape[1] == 1 or data.shape[1] == 3, "Expect (N,1,H,W) or (N,3,H,W)"
+    assert data.shape[1] == 1 or data.shape[1] == 3, "Expected (N,1,H,W) or (N,3,H,W)"
     frames = data[0:1]
     # assert frames.dtype == torch.uint8
     assert frames.is_cuda

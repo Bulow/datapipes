@@ -128,7 +128,7 @@ def get_closest_mask_boundaries_along_line(img: torch.Tensor, start_point: torch
     points = tuple(project_marker_along_segment(start=start_point, stop=end_point, frac=frac) for frac in (lower, upper))
     return points
 
-def center_point_in_mask_boundaries(point_to_center: torch.Tensor, point_in_segment: torch.Tensor, mask: torch.Tensor, strength: float=1.0) -> torch.Tensor:
+def center_point_in_mask_boundaries(point_to_center: torch.Tensor, point_in_segment: torch.Tensor, mask: torch.Tensor, strength: float=1.0, max_displacement_factor: float=0.25) -> torch.Tensor:
     seg = point_in_segment - point_to_center
     normal = torch.stack((-seg[1], seg[0]))
     

@@ -92,7 +92,7 @@ class DataPipe(DatasetSource):
         data = self._execute_pipe(data)
 
         if isinstance(index, int):
-            return data[0]
+            return data.squeeze(0)
         else:
             return data
 
@@ -107,7 +107,9 @@ class DataPipe(DatasetSource):
     def __or__(self, func: Callable[[torch.Tensor], torch.Tensor]) -> "DataPipe":
         return self.then(func)
     
-
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
 
 
     # TODO: Move out
