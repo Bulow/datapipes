@@ -18,7 +18,7 @@ class _Slicer:
     def from_shape(cls, shape: Tuple[int]) -> "_Slicer":
         return cls(shape=shape)
     
-    def normalize(self, index, shape: Optional[Tuple[int]]=None):
+    def normalize(self, index, shape: Optional[Tuple[int, ...]]=None):
         
         if shape is None:
             normalized_index = _ndindex(index).raw

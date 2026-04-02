@@ -15,6 +15,7 @@ from pathlib import Path
 from datapipes.auto_indexing_window import AutoIndexingWindow
 from typing import Literal, Callable, Iterable, Iterator, Any, Optional
 # from datapipes.utils.logging import progress_bar
+from datapipes.datasets.utils.tensor_dataset import TensorDataset
 # TODO: Make DataPipe composable with abstract datapipes
 
 import functools
@@ -26,7 +27,9 @@ class FutureSlice:
 
 class DataPipe(DatasetSource):
 
-    def __init__(self, dataset: "DatasetSource|DataPipe", segments: Tuple=(), requires_grad: bool=False):
+    def __init__(self, dataset: "DatasetSource|DataPipe|torch.Tensor", segments: Tuple=(), requires_grad: bool=False):
+        if isinstance(dataset, torch.Tensor):
+            dataset = TensorDataset(dataset)
         self._dataset = dataset
         self.segments = segments
 

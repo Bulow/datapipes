@@ -9,6 +9,7 @@ import h5py
 import nvidia.nvimgcodec as nv
 from tqdm import tqdm
 from typing import Callable, Iterable, Iterator
+import math
 
 #%%
 
@@ -48,7 +49,7 @@ def populate_metadata(dp: DataPipe):
     )
     return metadata
 
-def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group) -> format_specification.LsciEncodedFramesH5:
+def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group, code_stream_outer_compressor=None) -> format_specification.LsciEncodedFramesH5:
     metadata = populate_metadata(dp)
 
     placeholder_dict: format_specification.LsciEncodedFramesH5
@@ -61,6 +62,7 @@ def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group) -> format_specifi
         maxshape=(None, ),
         dtype=np.uint8,
         chunks=True,
+        compression=code_stream_outer_compressor,
     )
 
     frame_lengths_bytes_placeholder = manuals[placeholder_dict.frames.frame_lengths_bytes]
@@ -88,7 +90,7 @@ def init_hdf5_structure(dp: DataPipe, f: h5py.File|h5py.Group) -> format_specifi
 
     return live_view
 
-def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: int=512, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm) -> DeepHasher:
+def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: int=512, progress_bar: Callable[[Iterable, int, str], Iterator] = tqdm, code_stream_outer_compressor=None) -> DeepHasher:
     # Prepare path
     if isinstance(out_path, str):
         out_path = Path(out_path)
@@ -101,7 +103,7 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: in
 
     with h5py.File(out_path, "w") as f:
        
-        live_view = init_hdf5_structure(dp, f)
+        live_view = init_hdf5_structure(dp, f, code_stream_outer_compressor=code_stream_outer_compressor)
 
         # rich.inspect(live_view)
 
@@ -139,7 +141,7 @@ def datapipe_to_lossless_j2k_h5(dp: DataPipe, out_path: str|Path, batch_size: in
                 yield batch, encoded
                 
 
-        for batch, encoded in progress_bar(PrefetchIterator(encoded_frames_it()), total=len(dp), desc=f"Converting file {dp.path.name}"):
+        for batch, encoded in progress_bar(PrefetchIterator(encoded_frames_it()), total=math.ceil(len(dp) / batch_size), desc=f"Converting file {dp.path.name}"):
             # print(f"{batch = }, {type(batch) = }")
             source_hasher.ingest_frames(batch)
 

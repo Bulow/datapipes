@@ -212,3 +212,105 @@ def cumulative_spatial_contrast(frames: torch.Tensor) -> torch.Tensor:
 
 def bfi(frames: torch.Tensor) -> torch.Tensor:
     return 1.0 / (frames ** 2)
+
+
+def skewness(window_size: int, eps: float = 1e-12) -> Callable[[torch.Tensor], torch.Tensor]:
+    def _skewness(x: torch.Tensor) -> torch.Tensor:
+        """
+        Compute local skewness over the frame dimension of an (n, c, h, w) tensor,
+        using a sliding window and returning only valid positions.
+
+        Args:
+            x: Input tensor of shape (n, c, h, w)
+            window_size: Temporal window size
+            eps: Numerical stability constant
+
+        Returns:
+            Tensor of shape (n - window_size + 1, c, h, w)
+        """
+        if x.ndim != 4:
+            raise ValueError(f"Expected x to have shape (n, c, h, w), got {tuple(x.shape)}")
+        if window_size <= 0:
+            raise ValueError("window_size must be > 0")
+        if window_size > x.shape[0]:
+            raise ValueError("window_size must be <= x.shape[0]")
+
+        x = x.to(dtype=torch.float32)
+        _, c, h, w = x.shape
+
+        # (n, c, h, w) -> (1, c*h*w, n)
+        x = einops.rearrange(x, "n c h w -> 1 (c h w) n")
+
+        x2 = x * x
+        x3 = x2 * x
+
+        kernel = torch.ones((x.shape[1], 1, window_size), device=x.device, dtype=x.dtype)
+
+        sum1 = F.conv1d(x,  kernel, groups=x.shape[1])
+        sum2 = F.conv1d(x2, kernel, groups=x.shape[1])
+        sum3 = F.conv1d(x3, kernel, groups=x.shape[1])
+
+        mean = sum1 / window_size
+        ex2 = sum2 / window_size
+        ex3 = sum3 / window_size
+
+        m2 = ex2 - mean.square()
+        m3 = ex3 - 3 * mean * ex2 + 2 * mean.pow(3)
+
+        skew = m3 / m2.clamp_min(eps).pow(1.5)
+
+        # (1, c*h*w, n_valid) -> (n_valid, c, h, w)
+        return einops.rearrange(skew, "1 (c h w) n -> n c h w", c=c, h=h, w=w)
+    return _skewness
+
+def kurtosis(window_size: int, eps: float = 1e-12) -> Callable[[torch.Tensor], torch.Tensor]:
+    def _kurtosis(x: torch.Tensor) -> torch.Tensor:
+        """
+        Compute local kurtosis over the frame dimension of an (n, c, h, w) tensor,
+        using a sliding window and returning only valid positions.
+
+        Args:
+            x: Input tensor of shape (n, c, h, w)
+            window_size: Temporal window size
+            eps: Numerical stability constant
+
+        Returns:
+            Tensor of shape (n - window_size + 1, c, h, w)
+        """
+        if x.ndim != 4:
+            raise ValueError(f"Expected x to have shape (n, c, h, w), got {tuple(x.shape)}")
+        if window_size <= 0:
+            raise ValueError("window_size must be > 0")
+        if window_size > x.shape[0]:
+            raise ValueError("window_size must be <= x.shape[0]")
+
+        x = x.to(dtype=torch.float32)
+        _, c, h, w = x.shape
+
+        # (n, c, h, w) -> (1, c*h*w, n)
+        x = einops.rearrange(x, "n c h w -> 1 (c h w) n")
+
+        x2 = x * x
+        x3 = x2 * x
+        x4 = x2 * x2
+
+        kernel = torch.ones((x.shape[1], 1, window_size), device=x.device, dtype=x.dtype)
+
+        sum1 = F.conv1d(x,  kernel, groups=x.shape[1])
+        sum2 = F.conv1d(x2, kernel, groups=x.shape[1])
+        sum3 = F.conv1d(x3, kernel, groups=x.shape[1])
+        sum4 = F.conv1d(x4, kernel, groups=x.shape[1])
+
+        ex1 = sum1 / window_size
+        ex2 = sum2 / window_size
+        ex3 = sum3 / window_size
+        ex4 = sum4 / window_size
+
+        m2 = ex2 - ex1.square()
+        m4 = ex4 - 4 * ex1 * ex3 + 6 * ex1.square() * ex2 - 3 * ex1.pow(4)
+
+        kurt = m4 / m2.clamp_min(eps).square()
+
+        # (1, c*h*w, n_valid) -> (n_valid, c, h, w)
+        return einops.rearrange(kurt, "1 (c h w) n -> n c h w", c=c, h=h, w=w)
+    return _kurtosis

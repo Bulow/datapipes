@@ -44,7 +44,7 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
         return self.rls_file_reader[index]
     
     def __setitem__(self, index, value) -> None:
-        raise NotImplementedError(f"Datasets are read-only")
+        raise NotImplementedError("Datasets are read-only")
     
     @property
     def timestamps(self):
@@ -54,7 +54,7 @@ class DatasetRLS(DatasetSource, DatasetWithMetadata):
     @property
     def frame_index_in_recording(self):
         return range(0, self.rls_file_reader.total_frame_count)
-    
+
 class CachedTimestampList(Sequence):
     def __init__(self, frame_count):
         self.timestamps = np.zeros((frame_count), dtype=np.uint64)
@@ -79,7 +79,7 @@ class CachedTimestampList(Sequence):
 class RLS_FileReader:
     def __init__(self, path: Path|str, rls_dtype=torch.uint8, max_frames=None, switch_wh_metadata_read_order: bool=False):
         if isinstance(path, str):
-             path = Path(path)
+            path = Path(path)
         self.path = path
         self.rls_dtype = rls_dtype
         self.bytes_per_pixel = torch.tensor([], dtype=rls_dtype).element_size()

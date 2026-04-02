@@ -51,3 +51,62 @@ def encode_frames_threaded(
         # Results come back in task order, which matches frame order.
         for chunk_bytes in ex.map(_encode_chunk, tasks, chunksize=1):
             yield from chunk_bytes
+
+
+def _decode_chunk(
+    args: tuple[list[bytes], Callable[[bytes], np.ndarray], int, int]
+) -> list[np.ndarray]:
+    items, decode_func, start, end = args
+    out: list[np.ndarray] = []
+
+    for i in range(start, end):
+        out.append(decode_func(items[i]))
+
+    return out
+
+
+def decode_frames_threaded(
+    encoded: Iterable[bytes],
+    decode_func: Callable[[bytes], np.ndarray],
+    *,
+    max_workers: Optional[int] = None,
+    chunk_items: int = 128,
+    **kwargs,
+) -> Iterator[np.ndarray]:
+    """
+    High-throughput threaded decoder.
+    Preserves encoded-item order and yields decoded frames lazily.
+
+    Parameters
+    ----------
+    encoded:
+        Iterable of encoded frame payloads, one item per frame.
+    decode_func:
+        Function that decodes one encoded payload into one frame array.
+    max_workers:
+        Number of worker threads. Defaults to os.cpu_count().
+    chunk_items:
+        Number of encoded items per submitted task.
+
+    Yields
+    ------
+    np.ndarray
+        Decoded frames in the same order as the input stream.
+    """
+    items = list(encoded)
+    n = len(items)
+    if n == 0:
+        return iter(())
+
+    chunk_items = max(1, int(chunk_items))
+    workers = max_workers or (os.cpu_count() or 1)
+
+    tasks = [
+        (items, decode_func, start, min(start + chunk_items, n))
+        for start in range(0, n, chunk_items)
+    ]
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        # Results come back in task order, which matches input order.
+        for chunk_frames in ex.map(_decode_chunk, tasks, chunksize=1):
+            yield from chunk_frames

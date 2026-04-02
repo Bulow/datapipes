@@ -23,7 +23,7 @@ from datapipes.datasets import DatasetSource
 
 from datapipes.save_datapipe.new_file_format.wrapper_dataset import WrapperDataset
 
-
+from dataclasses import dataclass
 
 def _is_string_dtype(dt):
     # bytes (S), unicode (U), or object that may contain strings
@@ -89,6 +89,12 @@ def decode_frame_by_frame(
 
 FRAMES_FORMAT_VERSION: str = "2026.01.22.1"
 
+@dataclass
+class CustomEncoder:
+    encoder: Callable[[np.ndarray], bytes]
+    base_codec: str
+    is_batched_encoder: bool=False
+
 class Frames(Protocol):
     def __init__(self, group: storage_backend.Group):
         self.group: storage_backend.Group = group
@@ -114,13 +120,15 @@ class Frames(Protocol):
         self._encode_func: Callable[[np.ndarray], Iterable[bytes]]
         self._decode_func: Callable[[Iterable[bytes]], np.ndarray]
 
+        self.parent = None
+
         self.lazy_decoder: LazyDecodingImageTensor
 
         self.frames_format_version: str = FRAMES_FORMAT_VERSION
 
 
     @classmethod
-    def create(cls, group: storage_backend.Group, individual_frame_shape: Tuple[int, ...], dtype: np.dtype, codec: Literal["j2k", "jxl"] = "j2k"):
+    def create(cls, group: storage_backend.Group, individual_frame_shape: Tuple[int, ...], dtype: np.dtype, codec: Literal["j2k", "jxl"]|tuple[Callable[[np.ndarray], bytes], str] = "j2k"):
         f = Frames(group)
 
         f.individual_frame_shape = individual_frame_shape
@@ -129,14 +137,21 @@ class Frames(Protocol):
 
         f.frame_count = 0
 
-        f._codec = codec
         f._container = "h5"
         f._frames_type_id = "compressed_codestream"
 
         f._current_frame_capacity = 1024
         f._current_codestream_capacity = 10**9
         f._current_codestream_position = 0
-        f._encode_func = get_encoder(f._codec)
+        
+        if isinstance(codec, CustomEncoder):
+            f._custom_encoder = codec
+            f._codec = codec.base_codec
+            f._encode_func = codec.encoder if codec.is_batched_encoder else (lambda f: encode_frames_threaded(f, codec.encoder))
+        else:
+            f._codec = codec
+            f._encode_func = get_encoder(f._codec)
+
         f._decode_func = get_decoder(f._codec)
 
         f.init_group()
@@ -173,7 +188,8 @@ class Frames(Protocol):
         f.timestamps = group["timestamps"]
 
         f.individual_frame_shape = (c, h, w)
-        f.frame_count = n
+        # f.frame_count = len(f.frame_lengths_bytes)
+        f.frame_count = f.frame_lengths_bytes[:].nonzero()[0].shape[0]
 
         f._container = "h5"
         f._frames_type_id = "compressed_codestream"
@@ -338,14 +354,17 @@ class Frames(Protocol):
             self.encoded_frames.resize((self._current_codestream_position, ))
 
         # Close file if needed
-        if isinstance(self.group, storage_backend.File):
-            self.group.close()
+        # if isinstance(self.group, storage_backend.File):
+        #     self.group.close()
 
     def load_frames(self):
         raise NotImplementedError()
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        return (self.frame_count, *self.individual_frame_shape)
+        return (len(self), *self.individual_frame_shape)
+    
+    def __len__(self):
+        return self.frame_count
     
     

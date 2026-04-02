@@ -43,7 +43,7 @@ class FileContents:
                 case FieldType.frames_group:
                     value = Frames(group=f._root)
                 case FieldType.file_folder_group:
-                    value = f._root.
+                    value = f._root.create_group(name=var_name)
                 case _:
                     raise NotImplementedError(f"Invalid field type: {field_type}, {var_name = }")
             object.__setattr__(f, name=var_name, value=value)
@@ -55,9 +55,9 @@ class FileContents:
 
 
 
-@dataclass(frozen=True, kw_only=True)
-class LsciEncodedFramesH5:
-    format_id: str
-    format_version: str
-    frames: ImageEncodedFrameStream
-    metadata: UserMetadata
+# @dataclass(frozen=True, kw_only=True)
+# class LsciEncodedFramesH5:
+#     format_id: str
+#     format_version: str
+#     frames: ImageEncodedFrameStream
+#     metadata: UserMetadata

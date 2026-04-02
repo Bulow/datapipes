@@ -16,6 +16,13 @@ from datapipes.datasets.dataset_video_file import DatasetVideoFile
 from datapipes.datasets.modifiers.cached_dataset import CachedDataset
 from datapipes.datasets.modifiers.compressed_cached_dataset import CompressedCachedDataset
 
+from datapipes.datasets.utils.tensor_dataset import TensorDataset
+
+from datapipes.datasets.dataset_mkv import DatasetMkv
+
+# from datapipes.save_datapipe.new_file_format.file_store import load_file_store_as_frames_dataset
+
+
 from datapipes.sic import sic
 from tqdm import tqdm
 
@@ -23,22 +30,51 @@ import fnmatch
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Literal, Optional
 
-
+import torch
+import numpy as np
 from pathlib import Path
-
-
+from datapipes import sinks
+from datapipes.utils import benchmarking
 
 Handler = Callable[[Path], DatasetSource]
+
+def save_tensor_npy(t: torch.Tensor|DatasetSource, path: Path, verbose: bool=True):
+    if not path.parent.exists():
+        path.parent.mkdir(parents=True)
+    if not isinstance(t, torch.Tensor):
+        t = sinks.accumulate(t, idx=slice(None))
+    with path.open("wb") as f:
+        if verbose:
+            print(f"Saving {benchmarking.human_readable_filesize(benchmarking.get_logical_size(t))}. This might take a while...")
+        np.save(f, t.cpu().numpy())
+        if verbose:
+            print(f"Saved {benchmarking.human_readable_filesize(benchmarking.get_logical_size(t))}")
+
+def load_tensor_npy(path: Path):
+    from datapipes.datasets.utils.tensor_dataset import TensorDataset
+    with path.open("rb") as f:
+        t = torch.from_numpy(np.load(f))
+    ds = TensorDataset(t)
+    ds._path = path
+    return ds
+
+def load_fs_temp(path):
+    from datapipes.save_datapipe.new_file_format import file_store, frames, codecs
+    return file_store.load_file_store_as_frames_dataset(path)
 
 # TODO: Use glob instead
 _dataset_extensions = {
     "*.rls": DatasetRLS,
+    # "*.j2k.h5fs": load_file_store_as_frames_dataset,
     "*.j2k.h5": DatasetCompressedImageStreamHdf5,
     "*.hdf5": DatasetHDF5,
     "*.h5": DatasetHDF5,
     "*.zarr": DatasetZarr,
     "*.zarr.zip": DatasetZarr,
     "*.mp4": DatasetVideoFile,
+    "*.mkv": DatasetMkv,
+    "*.npy": load_tensor_npy,
+    "*.fs.h5": load_fs_temp,
 }
 
 _extensions_from_dataset_class = {ds: ext[1:] for ext, ds in _dataset_extensions.items()}
@@ -134,8 +170,10 @@ __all__ = [
     "DatasetImageFolder", 
     "DatasetZarr", 
     "DatasetVideoFile",
+    "DatasetMkv",
     "load_dataset",
-    "register_file_type", 
+    "register_file_type",
+    "TensorDataset",
 ]
 # %%
 

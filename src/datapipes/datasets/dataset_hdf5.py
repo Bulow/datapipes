@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import math
+from enum import StrEnum, auto
 
 # def get_metadata_from_fname(fname: Path) -> Tuple[str, str, str, str, str]:
 #     camera_model, camera_serial_number, timestamp_index = fname.stem.split("__")
@@ -29,41 +30,35 @@ def get_hdf5_paths_in_folder(folder: str): #TODO: add "recursively" arg
     dataset_paths = {d.name:d for d in folder.glob("*.hdf5")}
     return dataset_paths
 
-class LSCI_HDF5_FORMAT:
-    frames = "frames"
-    mean_frame = "mean_frame"
+class LSCI_HDF5_FORMAT(StrEnum):
+    frames = auto()
+    mean_frame = auto()
 
-    metadata = "metadata"
-    timestamps = "timestamps"
-    frame_index_in_recording = "frame_index_in_recording"
+    metadata = auto()
+    timestamps = auto()
+    frame_index_in_recording = auto()
 
     metadata__timestamps = f"{metadata}/{timestamps}"
     metadata__frame_index_in_recording = f"{metadata}/{frame_index_in_recording}"
 
 
 class DatasetHDF5(DatasetSource):
-    def __init__(self, path: Path|str, *, force_no_mean=False, max_frames=None):
+    def __init__(self, path: Path|str, *, max_frames=None):
         if isinstance(path, str):
              path = Path(path)
         self._path = path
         self.file = h5py.File(path, "r")
-        self.frames, self.timestamps, self.frame_index_in_recording, self.mean_frame = self.load_hdf5_dataset(path)
+        self.frames, self._timestamps, self.frame_index_in_recording = self.load_hdf5_dataset(path)
         self.length = len(self.frames)
         if max_frames is not None:
             self.length = min(self.length, max_frames)
-        if force_no_mean:
-            self.mean = None
+
     
     def load_hdf5_dataset(self, path: Path|str):
         if isinstance(path, str):
             path = Path(path)
 
         frames = self.file[LSCI_HDF5_FORMAT.frames]
-
-        try:
-            mean_frame = torch.from_numpy(self.file[LSCI_HDF5_FORMAT.mean_frame][0])
-        except KeyError:
-            mean_frame = None
 
         try:
             timestamps = self.file[LSCI_HDF5_FORMAT.metadata__timestamps]
@@ -76,11 +71,19 @@ class DatasetHDF5(DatasetSource):
             frame_index_in_recording = None
         
         
-        return frames, timestamps, frame_index_in_recording, mean_frame
+        return frames, timestamps, frame_index_in_recording
             
     @property
     def shape(self):
         return self.length, *self.frames.shape[1:]
+    
+    @property
+    def timestamps(self):
+        return self._timestamps
+    
+    @property
+    def path(self):
+        return self._path
 
     def __del__(self):
         self.file.close()
@@ -103,8 +106,6 @@ class DatasetHDF5(DatasetSource):
         if not validate_index(index):
             raise IndexError(f"Index out of bounds: index={index}, length={self.length}")
         frames = torch.from_numpy(self.frames[index])
-        if self.mean_frame is not None:
-            frames = frames.to(torch.float32) / self.mean_frame
         return frames
     
     def get_range_metadata(self, index):

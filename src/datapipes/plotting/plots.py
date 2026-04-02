@@ -102,9 +102,9 @@ def _plot(frame, backend: plot_output_backend_type):
             raise ValueError(f"Unsupported backed: {backend}")
 
 
-def _grid_reshape(batch):
+def _grid_reshape(batch, grid_cols=None):
     n = batch.shape[0]  # number of images to show
-    grid_cols = math.ceil(math.sqrt(n))
+    grid_cols = grid_cols or math.ceil(math.sqrt(n))
     grid_rows = math.ceil(n / grid_cols)
     pad = grid_rows * grid_cols - n
     if pad > 0:
@@ -115,8 +115,8 @@ def _grid_reshape(batch):
     grid = einops.rearrange(imgs, "(r c) n h w -> n (r h) (c w)", r=grid_rows, c=grid_cols)
     return grid
 
-def _plot_grid(batch, backend: plot_output_backend_type = default_plot_output_backend):
-    return _plot(frame=_grid_reshape(batch), backend=backend)
+def _plot_grid(batch, grid_cols=None, backend: plot_output_backend_type = default_plot_output_backend):
+    return _plot(frame=_grid_reshape(batch, grid_cols), backend=backend)
 
 # @torch.no_grad()
 def qtile(tensor: torch.Tensor, quantile: tuple[float]=(0.02, 0.98), output_bytes=False):
@@ -162,6 +162,7 @@ def plot_raw(
         quantiles: Optional[tuple[float]]=None, 
         cmap: Optional[str|TorchColormap]=None, 
         mode: Literal["grid", "horizontal", "vertical", "animate"]="grid",
+        grid_columns: Optional[int]=None,
         backend: plot_output_backend_type = default_plot_output_backend
     ):
     if mode == "animate" or backend == "plotly_animate":
@@ -206,7 +207,7 @@ def plot_raw(
     match mode:
         case "grid":
             tensors = torch.cat(tensors)
-            return _plot_grid(tensors, backend=backend)
+            return _plot_grid(tensors, grid_cols=grid_columns, backend=backend)
         case "horizontal":
             # _plot(einops.rearrange(tensors, "n c h w -> c h (w n)"))
             tensors = torch.cat(tensors, dim=-1)[0]
@@ -225,9 +226,10 @@ def plot_raw(
 def plot(
         *tensors: torch.Tensor, 
         mode: Literal["grid", "horizontal", "vertical"]="grid",
+        grid_columns: Optional[int]=None,
         backend: plot_output_backend_type = default_plot_output_backend
     ):
-    return plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode, backend=backend)
+    return plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode, grid_columns=grid_columns, backend=backend)
 
 
 def transpose(frames):

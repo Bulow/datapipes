@@ -30,6 +30,10 @@ class DatasetSource(Dataset):
 
     def as_pytorch_dataloader(self, batch_size: int=128, shuffle: bool=True) -> DataLoader:
         return DataLoader(dataset=self, batch_size=batch_size, shuffle=shuffle)
+    
+    def __or__(self, other):
+        from datapipes.datapipe import DataPipe
+        return DataPipe(self) | other
 
 class DatasetWithMetadata(Protocol):
     def get_metadata(self) -> dict:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datapipes
 from datapipes.datasets import DatasetSource
 import torch
@@ -10,6 +12,9 @@ import sys
 from collections import deque
 import warnings
 import rich
+from typing import Literal
+from contextlib import contextmanager
+import time
 
 class MultiBlockTimer:
     def __init__(self):
@@ -34,12 +39,28 @@ class MultiBlockTimer:
     def __str__(self) -> str:
         return human_readable_time(self.total)
     
-def human_readable_filesize(size_bytes: int, dp=2):
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if size_bytes < 1024.0:
+@contextmanager
+def watch(name: str="Watched block"):
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+    print(f"{name} ran in {human_readable_time(end - start)}")
+    
+def human_readable_filesize(size_bytes: int, dp=2, base: Literal[1000, 1024]=1000):
+    if size_bytes is None:
+        return "-B"
+    match base:
+        case 1000:
+            units = ("B", "KB", "MB", "GB", "TB", "PB")
+        case 1024:
+            units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+        case _:
+            raise ValueError(f"Unsupported base: {base}. Supported bases: [1000, 1024]")
+    for unit in units:
+        if size_bytes < base:
             return f"{size_bytes:.{dp}f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.{dp}f} PB"
+        size_bytes /= base
+    return f"{size_bytes:.{dp}f} {units[-1]}"
 
 def human_readable_time(secs: float) -> str:
     ms = int((secs - int(secs)) * 1000)
@@ -68,7 +89,10 @@ def get_logical_size(datapipe: DataPipe|DatasetSource) -> int:
     return total_logical_bytes
 
 def get_disk_size(datapipe: DataPipe|DatasetSource) -> int:
-    return datapipe.path.stat().st_size
+    try:
+        return datapipe.path.stat().st_size
+    except OSError:
+        return -1
 
 def _get_tensor_size_bytes(tensor: torch.Tensor) -> int:
     total_bytes = tensor.numel() * tensor.element_size()

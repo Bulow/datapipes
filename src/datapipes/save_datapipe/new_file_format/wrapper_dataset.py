@@ -72,7 +72,7 @@ class WrapperDataset(datasets.DatasetSource):
             raise TypeError(f"Output type not supported: {type(out) = }")
 
     def __len__(self) -> int:
-        return self._shape[0]
+        return self.shape[0]
 
     def __repr__(self) -> str:
         return f"WrapperDataset(wrapped=<{type(self.wrapped)}>, shape={tuple(self.shape)}, dtype={self.dtype})"
