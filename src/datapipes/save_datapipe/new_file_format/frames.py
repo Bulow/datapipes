@@ -128,7 +128,7 @@ class Frames(Protocol):
 
 
     @classmethod
-    def create(cls, group: storage_backend.Group, individual_frame_shape: Tuple[int, ...], dtype: np.dtype, codec: Literal["j2k", "jxl"]|tuple[Callable[[np.ndarray], bytes], str] = "j2k"):
+    def create(cls, group: storage_backend.Group, individual_frame_shape: Tuple[int, ...], dtype: np.dtype, codec: Literal["j2k", "jxl", "jpeg"]|tuple[Callable[[np.ndarray], bytes], str] = "j2k"):
         f = Frames(group)
 
         f.individual_frame_shape = individual_frame_shape
@@ -225,7 +225,7 @@ class Frames(Protocol):
         # raise NotImplementedError
 
     @classmethod
-    def like_frame(cls, group: storage_backend.Group, frame: np.ndarray|Any, codec: Literal["j2k", "jxl"] = "j2k") -> "Frames":
+    def like_frame(cls, group: storage_backend.Group, frame: np.ndarray|Any, codec: Literal["j2k", "jxl", "jpeg"] = "j2k") -> "Frames":
         if frame.ndim != 3:
             raise ValueError(f"frame must have 3 dimensions, got {frame.ndim = }")
         if hasattr(frame, "numpy"):

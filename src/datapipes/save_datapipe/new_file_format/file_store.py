@@ -78,7 +78,7 @@ class FileStore:
         metadata: object, 
         individual_frame_shape: Tuple[int, ...], 
         dtype: np.dtype, 
-        codec: Literal["j2k", "jxl"] = "j2k"
+        codec: Literal["j2k", "jxl", "jpeg"] = "j2k"
     ) -> "FileStore":
         fs = FileStore(path=path, io_mode="w")
 
@@ -110,7 +110,7 @@ class FileStore:
         return fs
 
     @classmethod
-    def like_frame(cls, path: Path|str, metadata: object, frame: np.ndarray|Any, codec: Literal["j2k", "jxl"] = "j2k") -> "FileStore":
+    def like_frame(cls, path: Path|str, metadata: object, frame: np.ndarray|Any, codec: Literal["j2k", "jxl", "jpeg"] = "j2k") -> "FileStore":
         if frame.ndim != 3:
             raise ValueError(f"frame must have 3 dimensions, got {frame.ndim = }")
         if hasattr(frame, "cpu"):
@@ -147,12 +147,13 @@ class FileStore:
         self.close()
 
     def close(self) -> None:
-        print("closing")
+        # print("closing")
         if hasattr(self, "frames"):
             self.frames.close()
         if self.io_mode == "w":
             self._write_metadata()
-        self._file.close()
+        if hasattr(self, "_file"):
+            self._file.close()
 
     def __enter__(self):
         return self

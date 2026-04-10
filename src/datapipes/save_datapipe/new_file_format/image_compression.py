@@ -52,27 +52,58 @@ def _get_gpu_decoder():
 encoder = _get_gpu_encoder()
 decoder = _get_gpu_decoder()
 
+
+def make_lossless_jpeg_encode_params(
+    *,
+    color_spec: nvimgcodec.ColorSpec = nvimgcodec.ColorSpec.GRAY,
+    optimized_huffman: bool = False,
+    progressive: bool = False,
+) -> nvimgcodec.EncodeParams:
+    jpeg_params = nvimgcodec.JpegEncodeParams()
+    jpeg_params.optimized_huffman = optimized_huffman
+    if hasattr(jpeg_params, "progressive"):
+        jpeg_params.progressive = progressive
+
+    return nvimgcodec.EncodeParams(
+        quality_type=nvimgcodec.QualityType.LOSSLESS,
+        color_spec=color_spec,
+        jpeg_encode_params=jpeg_params,
+    )
+
 def torch_encode(frames: torch.Tensor, codec: Optional[Codec]="jpeg2k", params: Optional[nvimgcodec.EncodeParams]=None) -> list[bytes]:
     if isinstance(frames, np.ndarray):
         frames = torch.from_numpy(frames)
     nv_images = nvimgcodec.as_images([f for f in einops.rearrange(frames.to("cuda", non_blocking=True), "F 1 H W -> F H W 1").contiguous()])
     encoded = encoder.encode(nv_images, codec, params=params)
-    if encoded[0] is None:
-        raise NotImplementedError(f"Compression parameters result in compression error. This is caused inside nvimagecodec. Possible explanation if using j2k: j2k in high throughput mode is very picky about parameters")
+    if any(cstream is None for cstream in encoded):
+        raise NotImplementedError(
+            f"nvimgcodec failed to encode codec={codec!r} with the requested parameters. "
+            "For jpeg, verify the installed nvimgcodec backend supports lossless JPEG. "
+            "For jpeg2k, high-throughput mode can be picky about parameters."
+        )
     encoded = [cstream.__buffer__(0) for cstream in encoded]
     # import rich
     # rich.print(encoded)
     return encoded
 
 
-def torch_decode(encoded: list[bytes|torch.ByteTensor], roi: Optional[Tuple[slice]] = None) -> torch.Tensor:
+def torch_decode(encoded: list[bytes|torch.ByteTensor] | bytes | torch.ByteTensor | np.ndarray, roi: Optional[Tuple[slice]] = None) -> torch.Tensor:
     # TODO: block based ROI decoding
     if roi is not None:
         roi = roi[-3:] # dump temporal dimension from roi, since it is contained in `encoded`
 
+    # nvimgcodec accepts either a single codestream or a batch. Normalize to a
+    # batch here so the return type is predictable across nvimgcodec versions.
+    if isinstance(encoded, (torch.ByteTensor, np.ndarray, bytes, bytearray, memoryview)):
+        encoded = [encoded]
+    else:
+        encoded = list(encoded)
+
     if isinstance(encoded[0], torch.ByteTensor):
         encoded = [nvimgcodec.CodeStream(s.numpy()) for s in encoded]
     decoded = decoder.decode(encoded, params=nvimgcodec.DecodeParams(color_spec=nvimgcodec.ColorSpec.GRAY))
+    if not isinstance(decoded, (list, tuple)):
+        decoded = [decoded]
     tensor_list = [torch.as_tensor(f) for f in decoded]
 
     single_tensor = einops.rearrange(torch.stack(tensor_list, dim=0), "F H W 1 -> F 1 H W")

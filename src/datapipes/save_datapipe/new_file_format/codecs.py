@@ -81,9 +81,9 @@ def register_encoder(
 def register_decoder(
     name: str,
     decode_func: Callable[[Iterable[bytes]], np.ndarray|torch.Tensor],
-    is_batched_encoder: bool=False
+    is_batched_decoder: bool=False
 ) -> None:
-    if is_batched_encoder:
+    if is_batched_decoder:
         decoders[name] = decode_func
     else:
         decoders[name] = make_batched_decoder(decode_func)
@@ -102,7 +102,12 @@ def get_decoder(name: str):
 try:
     os.environ['PYNVIMGCODEC_VERBOSITY'] = '5' # uncomment for verbose log output
     from nvidia import nvimgcodec
-    from datapipes.save_datapipe.new_file_format.image_compression import torch_encode, torch_decode
+    from datapipes.save_datapipe.new_file_format.image_compression import (
+        make_lossless_jpeg_encode_params,
+        torch_decode,
+        torch_encode,
+    )
+    
 
     jpeg2k_params = nvimgcodec.Jpeg2kEncodeParams()
     jpeg2k_params.bitstream_type = nvimgcodec.Jpeg2kBitstreamType.J2K
@@ -119,7 +124,16 @@ try:
     settings = dict(lib="nvimgcodec", ht=True, Jpeg2kBitstreamType="J2K", QualityType="LOSSLESS")
     register_encoder(name="j2k", encode_func=j2k_nv_encode, settings_used=settings, is_batched_encoder=True)
 
-    register_decoder(name="j2k", decode_func=torch_decode)
+    register_decoder(name="j2k", decode_func=torch_decode, is_batched_decoder=True)
+
+    # jpeg_nv_encode = partial(
+    #     torch_encode,
+    #     codec="jpeg",
+    #     params=make_lossless_jpeg_encode_params(),
+    # )
+    # settings = dict(lib="nvimgcodec", QualityType="LOSSLESS")
+    # register_encoder(name="jpeg", encode_func=jpeg_nv_encode, settings_used=settings, is_batched_encoder=True)
+    # register_decoder(name="jpeg", decode_func=torch_decode, is_batched_decoder=True)
 
 except ModuleNotFoundError:
     # TODO: Add CPU j2k codec

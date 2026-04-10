@@ -27,7 +27,7 @@ def encode_frames_threaded(
     encode_func: Callable[[np.ndarray], Iterable[bytes]],
     *,
     max_workers: Optional[int] = None,
-    chunk_frames: int = 128,
+    chunk_frames: int = 32,
     **kwargs,
 ) -> Iterator[bytes]:
     """
@@ -70,7 +70,7 @@ def decode_frames_threaded(
     decode_func: Callable[[bytes], np.ndarray],
     *,
     max_workers: Optional[int] = None,
-    chunk_items: int = 128,
+    chunk_items: int = 32,
     **kwargs,
 ) -> Iterator[np.ndarray]:
     """

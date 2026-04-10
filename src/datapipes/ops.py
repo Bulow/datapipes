@@ -21,6 +21,7 @@ from datapipes.manual_ops import with_manual_op, with_manual_unpad
 
 from datapipes.plotting.torch_colormap import TorchColormap
 from datapipes.plotting import plot
+from datapipes.plotting.plots import plot_raw
 # def roi(frames: torch.Tensor) -> torch.Tensor:
 
 
@@ -98,7 +99,7 @@ class Ops:
         width,
         height,
         visualize_roi: bool=True,
-        opacity: float=0.8
+        opacity: float=0.4
     ) -> Callable[[torch.Tensor], torch.Tensor]:
         
         top -= height // 2
@@ -116,9 +117,10 @@ class Ops:
 
             if frame.ndim == 3:
                 frame = frame.unsqueeze(0)
-            roi = torch.zeros_like(frame)
-            roi[..., top:top+height, left:left+width] = roi_func(frame)
-            plot((frame * opacity) + roi)
+            window = roi_func(frame)
+            frame = frame * opacity
+            frame[..., top:top+height, left:left+width] = window
+            plot_raw(frame)
 
         return roi_func
 

@@ -182,6 +182,8 @@ def plot_raw(
     # Add empty third channel to tensors with 2 channels (useful for plotting fields of 2D vectors)
     tensors = [torch.cat([t, torch.zeros_like(t[..., 1, :, :].unsqueeze(-3))], dim=-3) if t.shape[-3] == 2 else t for t in tensors]
     
+    tensors = [t.to("cuda") for t in tensors]
+
     # Clip all to quantiles
     if quantiles is not None:
         tensors = [qtile(t, quantiles) for t in tensors]
