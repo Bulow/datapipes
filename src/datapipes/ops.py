@@ -166,11 +166,17 @@ class Ops:
         return frames
     
     @staticmethod
-    def apply_mask(mask: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:
+    def apply_mask_op(mask: torch.Tensor) -> Callable[[torch.Tensor], torch.Tensor]:
         def _apply_mask(frames: torch.Tensor) -> torch.Tensor:
             return frames * (mask.to(dtype=frames.dtype, device = frames.device))
         return with_manual_op(_apply_mask)
     
+    @staticmethod
+    def apply_mask(tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        tensor, mask = Ops.crop_to_common_size(tensor, mask)
+        mask = (mask > 0).to(torch.uint8)
+        return tensor * mask
+        
     @staticmethod
     def resample(scale_factor: float, mode: Literal["nearest", "linear", "bilinear", "bicubic", "trilinear", "area", "nearest-exact"]="bicubic") -> Callable[[torch.Tensor], torch.Tensor]:
         def _resample(frames: torch.Tensor) -> torch.Tensor:
@@ -258,6 +264,8 @@ class Ops:
         if output_bytes:
             tensor = (((tensor - quantile[0]) / (quantile[1] - quantile[0])) * 255).to(torch.uint8)
         return tensor.to(dev)
+    
+    
     
     @staticmethod
     def crop_to_common_size(*tensors: torch.Tensor) -> Tuple[torch.Tensor]:

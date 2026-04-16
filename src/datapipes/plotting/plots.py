@@ -102,9 +102,9 @@ def _plot(frame, backend: plot_output_backend_type):
             raise ValueError(f"Unsupported backed: {backend}")
 
 
-def _grid_reshape(batch, grid_cols=None):
+def _grid_reshape(batch):
     n = batch.shape[0]  # number of images to show
-    grid_cols = grid_cols or math.ceil(math.sqrt(n))
+    grid_cols = math.ceil(math.sqrt(n))
     grid_rows = math.ceil(n / grid_cols)
     pad = grid_rows * grid_cols - n
     if pad > 0:
@@ -115,8 +115,8 @@ def _grid_reshape(batch, grid_cols=None):
     grid = einops.rearrange(imgs, "(r c) n h w -> n (r h) (c w)", r=grid_rows, c=grid_cols)
     return grid
 
-def _plot_grid(batch, grid_cols=None, backend: plot_output_backend_type = default_plot_output_backend):
-    return _plot(frame=_grid_reshape(batch, grid_cols), backend=backend)
+def _plot_grid(batch, backend: plot_output_backend_type = default_plot_output_backend):
+    return _plot(frame=_grid_reshape(batch), backend=backend)
 
 # @torch.no_grad()
 def qtile(tensor: torch.Tensor, quantile: tuple[float]=(0.02, 0.98), output_bytes=False):
@@ -128,6 +128,8 @@ def qtile(tensor: torch.Tensor, quantile: tuple[float]=(0.02, 0.98), output_byte
             q = torch.quantile(tensor, min_max)
         except RuntimeError as re:
             warnings.warn(message=f"Encountered {type(re).__name__} while getting quantiles: \"{re}\"\n\t Will use min and max values instead")
+            return (min_max[0], min_max[1])
+        if torch.allclose(q[0], q[1]):
             return (min_max[0], min_max[1])
         return (q[0], q[1])
 
@@ -162,7 +164,6 @@ def plot_raw(
         quantiles: Optional[tuple[float]]=None, 
         cmap: Optional[str|TorchColormap]=None, 
         mode: Literal["grid", "horizontal", "vertical", "animate"]="grid",
-        grid_columns: Optional[int]=None,
         backend: plot_output_backend_type = default_plot_output_backend
     ):
     if mode == "animate" or backend == "plotly_animate":
@@ -182,8 +183,6 @@ def plot_raw(
     # Add empty third channel to tensors with 2 channels (useful for plotting fields of 2D vectors)
     tensors = [torch.cat([t, torch.zeros_like(t[..., 1, :, :].unsqueeze(-3))], dim=-3) if t.shape[-3] == 2 else t for t in tensors]
     
-    tensors = [t.to("cuda") for t in tensors]
-
     # Clip all to quantiles
     if quantiles is not None:
         tensors = [qtile(t, quantiles) for t in tensors]
@@ -209,7 +208,7 @@ def plot_raw(
     match mode:
         case "grid":
             tensors = torch.cat(tensors)
-            return _plot_grid(tensors, grid_cols=grid_columns, backend=backend)
+            return _plot_grid(tensors, backend=backend)
         case "horizontal":
             # _plot(einops.rearrange(tensors, "n c h w -> c h (w n)"))
             tensors = torch.cat(tensors, dim=-1)[0]
@@ -228,10 +227,9 @@ def plot_raw(
 def plot(
         *tensors: torch.Tensor, 
         mode: Literal["grid", "horizontal", "vertical"]="grid",
-        grid_columns: Optional[int]=None,
         backend: plot_output_backend_type = default_plot_output_backend
     ):
-    return plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode, grid_columns=grid_columns, backend=backend)
+    return plot_raw(*tensors, quantiles=(0.02, 0.98), cmap="viridis", mode=mode, backend=backend)
 
 
 def transpose(frames):

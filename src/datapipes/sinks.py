@@ -133,37 +133,36 @@ def mean(frames: DataPipe, idx: slice=slice(None), batch_size: int=128) -> torch
     total_sum /= n
     return total_sum
 
+
+
+def var_mean(frames: DataPipe, idx: slice = slice(None), batch_size: int = 128) -> torch.Tensor:
+    total_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
+    total_sq_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
+    n: int = 0
+
+    for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progress_bar=tqdm):
+        batch = batch.to(device="cuda", dtype=torch.float32)
+        total_sum += batch.sum(dim=0, keepdim=False)
+        total_sq_sum += (batch * batch).sum(dim=0, keepdim=False)
+        n += batch.shape[0]
+
+
+    _mean = total_sum / n
+    _var = total_sq_sum / n - _mean * _mean
+    return _var.clamp_min(0), _mean
+
+def var(frames: DataPipe, idx: slice = slice(None), batch_size: int = 128) -> torch.Tensor:
+    _var, _ = var_mean(frames=frames, idx=idx, batch_size=batch_size)
+    return _var
+
+def std_mean(frames: DataPipe, idx: slice = slice(None), batch_size: int = 128) -> torch.Tensor:
+    _var, _mean = var_mean(frames=frames, idx=idx, batch_size=batch_size)
+    _std = torch.sqrt(_var)
+    return _std, _mean
+
 def std(frames: DataPipe, idx: slice = slice(None), batch_size: int = 128) -> torch.Tensor:
-    total_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
-    total_sq_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
-    n: int = 0
-
-    for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progress_bar=tqdm):
-        batch = batch.to(device="cuda", dtype=torch.float32)
-        total_sum += batch.sum(dim=0, keepdim=False)
-        total_sq_sum += (batch * batch).sum(dim=0, keepdim=False)
-        n += batch.shape[0]
-
-
-    mean = total_sum / n
-    var = total_sq_sum / n - mean * mean
-    return torch.sqrt(var.clamp_min(0))
-
-def var(frames: DataPipe, idx: slice = slice(None), batch_size: int = 512) -> torch.Tensor:
-    total_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
-    total_sq_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)
-    n: int = 0
-
-    for batch in subbatch(dp=frames, idx=idx, batch_size=batch_size, progress_bar=tqdm):
-        batch = batch.to(device="cuda", dtype=torch.float32)
-        total_sum += batch.sum(dim=0, keepdim=False)
-        total_sq_sum += (batch * batch).sum(dim=0, keepdim=False)
-        n += batch.shape[0]
-
-
-    mean = total_sum / n
-    var = total_sq_sum / n - mean * mean
-    return var.clamp_min(0)
+    _std, _ = std_mean(frames=frames, idx=idx, batch_size=batch_size)
+    return _std
 
 def kurtosis(frames: DataPipe, idx: slice = slice(None), batch_size: int = 512) -> torch.Tensor:
     total_sum = torch.zeros_like(frames[0]).to(device="cuda", dtype=torch.float32)

@@ -151,6 +151,8 @@ class HandsGeometry:
 def get_geometry_from_hands(input_frames: torch.Tensor, detector: Optional[hand_landmarks.Detector]=None) -> HandsGeometry:
     raw_img = input_frames.mean(0)
     # result = hand_landmarks.detect_landmarks(raw_img, detector=detector)
+    if detector is None:
+        detector = hand_landmarks.Detector()
     result = detector.detect(raw_img)
     mask = hand_segmentation.get_hand_mask(input_frames).to("cuda")
     mask_cpu = mask.cpu()[0]
@@ -183,7 +185,7 @@ def get_geometry_from_hands(input_frames: torch.Tensor, detector: Optional[hand_
     
     points = torch.stack(all_points, dim=0)
     lines = torch.cat(tuple(segs.get_segments_tensor() for segs in hand_segments), dim=1)
-    line_names = list([name for hs in hand_segments for name in hs.segs.keys()])
+    line_names = list([str(name) for hs in hand_segments for name in hs.segs.keys()])
 
     return HandsGeometry(
         points=points, 
@@ -240,7 +242,9 @@ def visualize_hand_geometry(input_frames: torch.Tensor, overlay_geometry_backgro
 def create_distinct_colormap(img: torch.Tensor) -> torch.Tensor:
     # labels = torch.unique(img).to(torch.int64)
     # labels = torch.arange(0, 255, 1, dtype=torch.uint8, device="cuda")
-    labels = torch.unique(img).to(torch.int64)
+    values = (img[img > 0])
+    values = ((values - 1) % 255) + 1
+    labels = torch.unique(values).to(torch.int64)
 
     # integer hash -> RGB bytes (deterministic, decorrelates nearby labels)
     x = labels
@@ -259,7 +263,10 @@ def create_distinct_colormap(img: torch.Tensor) -> torch.Tensor:
 
     r, g, b = stretch(r), stretch(g), stretch(b)
 
+    # assert False
     lut = torch.zeros((256, 3), dtype=torch.uint8, device="cuda")
+    if labels.to(torch.long).max() >= (lut.shape[0]):
+        raise RuntimeError(f"lut.__setitem__ using out of bound indices would have crashed CUDA.\n\t{labels.to(torch.long).max().item() = }, \n\t{lut.shape[0] = }")
     lut[labels.to(torch.long), 0] = r
     lut[labels.to(torch.long), 1] = g
     lut[labels.to(torch.long), 2] = b
@@ -338,7 +345,7 @@ def mask_to_distinct_colors(
     return rgb
 
 
-
+# TODO: Add support for segmentation masks with more than 256 regions
 def plot_segmentation_mask_plotly(
     mask: Union[torch.Tensor, np.ndarray],
     id_to_name: Dict[int, str],
@@ -355,7 +362,6 @@ def plot_segmentation_mask_plotly(
         m = torch.empty_like(mask)
         m.copy_(mask, non_blocking=True)
         edges = get_edge_mask(m[0])
-        print(f"{m.shape = }, {edges.shape = }")
         m[..., edges] = 0
         m = m.detach().cpu()
         if m.ndim == 3 and m.shape[0] == 1:

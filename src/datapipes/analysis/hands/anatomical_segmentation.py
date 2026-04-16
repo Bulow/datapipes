@@ -17,6 +17,11 @@ from datapipes.analysis.hands import named_markers, segments
 from dataclasses import dataclass
 from datapipes.analysis.hands.visualization import mask_to_distinct_colors
 _debug_frame_idx = 6
+from datapipes.analysis.hands.named_markers import L
+import rich
+import datapipes.analysis.hands.segmentation_map as segmentation_map
+from datapipes.analysis.hands.geometry import normalize, project_point_onto_line
+
 
 def _dplot(*vars: str):
     
@@ -378,50 +383,216 @@ def _closest_segment_mask(mask: torch.Tensor, gradient: torch.Tensor, hand_segme
 # , hand_name: Literal["Right", "Left"]
 
 
-@dataclass(frozen=True, kw_only=True)
-class SegmentationResult:
-    segmentation_mask: torch.Tensor
-    bboxes: Dict[str, Dict[str, torch.Tensor]]
-    segmentation_masks_by_hand: Dict[str, torch.Tensor]
-    hand_segments: Dict[str, segments.HandSegments]
 
-# def create_detector(num_hands: int=2) -> hand_landmarks.DetectorType:
-#     return hand_landmarks.create_detector(num_hands=2)
+
+
+
 
 @torch.no_grad
-def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True, detector: Optional[hand_landmarks.Detector]=None) -> SegmentationResult:
+def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bool=True, detector: Optional[hand_landmarks.Detector]=None) -> segmentation_map.SegmentationMap:
     """
     Compute segmentation mask
 
     Returns:
         out_seg_mask: torch.Tensor
-        bboxes: Dict[str, Dict[str, int]]
+        bboxes: Dict[str, segmentation_map.BBox]
+        anatomy_maps: Dict[str, torch.Tensor]
+    """
+    if img_data.ndim != 4:
+        raise RuntimeError(f"img_data.ndim must be 4. Got {img_data.ndim = }")
+    
+    std, mean = torch.std_mean(img_data.to("cuda"), dim=0)
+
+    return compute_segmentation_map_from_std_mean(std=std, mean=mean, use_surface_optimization=use_surface_optimization, detector=detector)
+#     img_data_gpu = img_data.to("cuda")
+#     # print(f"{img_data.shape = }")
+#     mask = hand_segmentation.get_hand_mask(img_data_gpu)
+#     if mask.ndim == 4:
+#         mask = mask.squeeze(0)
+#     mask_cpu = mask.to("cpu")
+#     # plot(mask)
+#     # print(f"{img_data.shape = }, {mask.shape = }")
+#     gradient = _prepare_gradients(img_data_gpu.mean(0), mask)
+#     # plot(gradient)
+# # 
+#     # print(f"{img_data.shape = }, {mask.shape = }, {gradient.shape = }")
+    
+#     # raw_landmarks_mediapipe_fmt = hand_landmarks.detect_landmarks(img_data=img_data.mean(0), detector=detector)
+
+#     # hand_indices = {cat[0].category_name:cat[0].index for cat in raw_landmarks_mediapipe_fmt.handedness}
+#     # hands_landmarks_px = {hand_name:hand_landmarks.landmarks_to_tensor(raw_landmarks_mediapipe_fmt, img_shape=mask.shape, hand_idx=idx, coord_type="px").to("cuda") for hand_name, idx in hand_indices.items()}
+#     if detector is None:
+#         detector = hand_landmarks.Detector()
+#     hands_landmarks_px = detector.detect(img_data.mean(0), ema_alpha=None)
+
+
+#     # hands_segments_px = {hand_name:hand_anatomy.build_segments(normalized_landmarks=normalized_landmarks_on_hand, mask=mask).to("cuda") for hand_name, normalized_landmarks_on_hand in hands_landmarks_normalized.items()}
+#     markers_named = {hand_name:named_markers.add_custom_markers(hand_marks, mask=mask_cpu) for hand_name, hand_marks in hands_landmarks_px.items()}
+
+#     name_to_idx: Dict[str, int] = {}
+#     markers = {}
+#     for hand_name, (hand_marks, hand_mark_indices) in markers_named.items():
+#         markers[hand_name] = torch.stack(tuple(hand_marks.values()))
+#         if len(name_to_idx) == 0:
+#             name_to_idx |= hand_mark_indices
+    
+#     markers_ema = detector.ema(markers=markers, alpha=0.9)
+#     markers_named_ema = {
+#         hand_name:{
+#             marker_name:hand_markers_ema[marker_idx] for marker_name, marker_idx in name_to_idx.items()
+#         } for hand_name, hand_markers_ema in markers_ema.items()
+#     }
+#     # print(markers_named_ema)
+#     # print(name_to_idx)
+
+        
+#     # left_marks, left_idx = named_markers.add_custom_markers(hands_landmarks_px["Left"], mask=mask)
+
+#     # right_marks, left_idx = named_markers.add_custom_markers(hands_landmarks_px["Left"], mask=mask)
+
+#     # print(left_idx)
+
+
+#     # raise RuntimeError()
+
+#     # markers_px_ema = detector.ema(markers=markers_px, alpha=0.9)
+
+#     hands_segments_px: Dict[str, segments.HandSegments] = {hand_name:segments.build_segments(markers_px=hand_markers, mask=mask_cpu) for hand_name, hand_markers in markers_named_ema.items()}
+
+#     # hands_segments_px = {hand_name:segments_hand for hand_name, segments_hand in segments}
+
+#     # Crop to bbox of chosen hand
+#     # chosen_segments = hands_segments_px[hand_name]
+#     bboxes: dict[str, segmentation_map.BBox] = {}
+#     anatomy_maps = {}
+#     out_seg_mask = torch.zeros_like(mask).to("cuda")
+#     # print(f"{tuple(hands_segments_px.keys()) = }")
+#     for hand_name, chosen_segments in hands_segments_px.items():
+#         H, W = img_data.shape[-2:]
+#         coords = einops.rearrange(chosen_segments.get_segments_tensor(), "e n c -> (e n) c") # coords = [x, y]
+
+#         min_coord = coords.min(dim=0).values
+#         max_coord = coords.max(dim=0).values
+
+#         padding = 50 # px
+#         min_coord -= padding
+#         max_coord += padding
+        
+#         min_coord = min_coord.clamp(min=0).to(torch.int)
+#         max_coord = max_coord.clamp(max=torch.tensor([W, H], device=max_coord.device)).to(torch.int)
+#         # max_coord[-1] = H # Preserve wrist (assumes orientation)
+
+#         min_h = min_coord[-1]
+#         max_h = max_coord[-1]
+#         min_w = min_coord[-2]
+#         max_w = max_coord[-2]
+
+#         bbox = segmentation_map.BBox(
+#             min_h=min_h,
+#             max_h=max_h,
+#             min_w=min_w,
+#             max_w=max_w,
+#         )
+#         bboxes[hand_name] = bbox
+
+#         # print(f"h={max_h-min_h}, w={max_w-min_w}\nH={H}, W={W}")
+        
+#         # cropped_img_data = img_data[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
+#         cropped_mask = mask[bbox.as_slice()]
+#         # plot(cropped_mask)
+#         current_hand_markers = markers_named_ema[hand_name]
+#         # cropped_mask = hand_segmentation.crop_wrist(
+#         #     cropped_mask,
+#         #     radial_wrist_point=current_hand_markers[L.distal_arm_radial],
+#         #     ulnar_wrist_point=current_hand_markers[L.distal_arm_ulnar],
+#         #     index_metacarp_point=current_hand_markers[L.index_mcp]
+#         # )
+#         # rich.print(current_hand_markers)
+#         # min_coord_cpu = min_coord.cpu()
+#         cut_points = torch.stack([
+#             current_hand_markers[L.thumb_vantage_wrist],
+#             current_hand_markers[L.index_vantage_wrist],
+#             current_hand_markers[L.middle_vantage_wrist],
+#             current_hand_markers[L.ring_vantage_wrist],
+#             current_hand_markers[L.pinky_vantage_wrist],
+#         ], dim=0) - min_coord.cpu().unsqueeze(0)
+#         from datapipes.analysis.hands.geometry import normalize, project_point_onto_line
+#         wrist_dir = normalize(current_hand_markers[L.arm_spacer_middle_proximal] - current_hand_markers[L.arm_spacer_middle_distal])# * 100 # px
+#         wrist_cut_offset = project_point_onto_line(
+#             origin=current_hand_markers[L.middle_vantage_wrist], 
+#             vec=(current_hand_markers[L.wrist] - current_hand_markers[L.middle_vantage_wrist]), 
+#             dir=wrist_dir
+#         ) - current_hand_markers[L.middle_vantage_wrist]
+#         cut_points += wrist_cut_offset.unsqueeze(0)
+#         cropped_mask = hand_segmentation.crop_wrist_along_points(
+#             cropped_mask,
+#             wrist_cut_points=cut_points,
+#             index_metacarp_point=current_hand_markers[L.index_mcp]
+#         )
+#         # plot(cropped_mask)
+
+
+#         cropped_gradients = gradient[bbox.as_slice()]
+
+#         # relative_coords = coords - min_coord
+#         # relative_segments = einops.rearrange(relative_coords, "(e n) c -> e n c", e=2)
+#         relative_segments = chosen_segments.relative_to(origin=min_coord)
+#         # _debug_dict["mask"] = cropped_mask[:, :450, :]
+#         anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, hand_segments=relative_segments, use_surface_optimization=use_surface_optimization)
+#         # hand_offset = 0
+#         # if hand_name == "right":
+#         #     hand_offset = len(chosen_segments.get_query_to_value_dict())
+
+#         anatomy_global = anatomy.clone()
+#         # if hand_offset:
+#         #     anatomy_global[anatomy_global != 0] = anatomy_global[anatomy_global > 0] + hand_offset
+
+#         out_seg_mask[bbox.as_slice()] = anatomy_global * cropped_mask
+#         anatomy_maps[hand_name] = anatomy_global
+
+#     if len(bboxes) == 2 and "right" in bboxes:
+#         both_hands = out_seg_mask.clone().to(torch.int16)
+#         right_hand = both_hands[bboxes["right"].as_slice()]
+#         right_hand[right_hand > 0] = right_hand[right_hand > 0] + (out_seg_mask.max() + 1)
+#         out_seg_mask = both_hands
+
+#     return segmentation_map.SegmentationMap(
+#         segmentation_map=out_seg_mask,
+#         _bboxes=bboxes,
+#     ) # , hands_segments_px
+
+
+@torch.no_grad
+def compute_segmentation_map_from_std_mean(std: torch.Tensor, mean: torch.Tensor, use_surface_optimization: bool=True, detector: Optional[hand_landmarks.Detector]=None) -> segmentation_map.SegmentationMap:
+    """
+    Compute segmentation mask
+
+    Returns:
+        out_seg_mask: torch.Tensor
+        bboxes: Dict[str, segmentation_map.BBox]
         anatomy_maps: Dict[str, torch.Tensor]
     """
 
-    img_data_gpu = img_data.to("cuda")
-    # print(f"{img_data.shape = }")
-    mask = hand_segmentation.get_hand_mask(img_data_gpu)
+    std_gpu = std.to("cuda")
+    mean_gpu = mean.to("cuda")
+    std_cpu = std.cpu()
+    mean_cpu = mean.cpu()
+
+    mask = hand_segmentation.get_hand_mask_from_std_mean(std=std, mean=mean)
     if mask.ndim == 4:
         mask = mask.squeeze(0)
     mask_cpu = mask.to("cpu")
     # plot(mask)
     # print(f"{img_data.shape = }, {mask.shape = }")
-    gradient = _prepare_gradients(img_data_gpu.mean(0), mask)
+    gradient = _prepare_gradients(mean, mask)
     # plot(gradient)
 # 
     # print(f"{img_data.shape = }, {mask.shape = }, {gradient.shape = }")
     
-    # raw_landmarks_mediapipe_fmt = hand_landmarks.detect_landmarks(img_data=img_data.mean(0), detector=detector)
-
-    # hand_indices = {cat[0].category_name:cat[0].index for cat in raw_landmarks_mediapipe_fmt.handedness}
-    # hands_landmarks_px = {hand_name:hand_landmarks.landmarks_to_tensor(raw_landmarks_mediapipe_fmt, img_shape=mask.shape, hand_idx=idx, coord_type="px").to("cuda") for hand_name, idx in hand_indices.items()}
     if detector is None:
         detector = hand_landmarks.Detector()
-    hands_landmarks_px = detector.detect(img_data.mean(0), ema_alpha=None)
+    hands_landmarks_px = detector.detect(mean.cpu(), ema_alpha=None)
 
-
-    # hands_segments_px = {hand_name:hand_anatomy.build_segments(normalized_landmarks=normalized_landmarks_on_hand, mask=mask).to("cuda") for hand_name, normalized_landmarks_on_hand in hands_landmarks_normalized.items()}
     markers_named = {hand_name:named_markers.add_custom_markers(hand_marks, mask=mask_cpu) for hand_name, hand_marks in hands_landmarks_px.items()}
 
     name_to_idx: Dict[str, int] = {}
@@ -437,32 +608,16 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
             marker_name:hand_markers_ema[marker_idx] for marker_name, marker_idx in name_to_idx.items()
         } for hand_name, hand_markers_ema in markers_ema.items()
     }
-    # print(markers_named_ema)
-    # print(name_to_idx)
-
-        
-    # left_marks, left_idx = named_markers.add_custom_markers(hands_landmarks_px["Left"], mask=mask)
-
-    # right_marks, left_idx = named_markers.add_custom_markers(hands_landmarks_px["Left"], mask=mask)
-
-    # print(left_idx)
-
-
-    # raise RuntimeError()
-
-    # markers_px_ema = detector.ema(markers=markers_px, alpha=0.9)
 
     hands_segments_px: Dict[str, segments.HandSegments] = {hand_name:segments.build_segments(markers_px=hand_markers, mask=mask_cpu) for hand_name, hand_markers in markers_named_ema.items()}
 
     # hands_segments_px = {hand_name:segments_hand for hand_name, segments_hand in segments}
 
     # Crop to bbox of chosen hand
-    # chosen_segments = hands_segments_px[hand_name]
-    bboxes = {}
-    anatomy_maps = {}
-    out_seg_mask = torch.zeros_like(mask).to("cuda")
+    bboxes: dict[str, segmentation_map.BBox] = {}
+    out_seg_map = torch.zeros_like(mask).to("cuda")
     for hand_name, chosen_segments in hands_segments_px.items():
-        H, W = img_data.shape[-2:]
+        H, W = mean_gpu.shape[-2:]
         coords = einops.rearrange(chosen_segments.get_segments_tensor(), "e n c -> (e n) c") # coords = [x, y]
 
         min_coord = coords.min(dim=0).values
@@ -474,43 +629,65 @@ def compute_anatomical_mask(img_data: torch.Tensor, use_surface_optimization: bo
         
         min_coord = min_coord.clamp(min=0).to(torch.int)
         max_coord = max_coord.clamp(max=torch.tensor([W, H], device=max_coord.device)).to(torch.int)
-        # max_coord[-1] = H # Preserve wrist (assumes orientation)
 
-        min_h=min_coord[-1]
-        max_h=max_coord[-1]
-        min_w=min_coord[-2]
-        max_w=max_coord[-2]
+        min_h = min_coord[-1]
+        max_h = max_coord[-1]
+        min_w = min_coord[-2]
+        max_w = max_coord[-2]
 
-        bboxes[hand_name] = dict(
+        bbox = segmentation_map.BBox(
             min_h=min_h,
             max_h=max_h,
             min_w=min_w,
             max_w=max_w,
         )
+        bboxes[hand_name] = bbox
 
         # print(f"h={max_h-min_h}, w={max_w-min_w}\nH={H}, W={W}")
         
-        # cropped_img_data = img_data[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
-        cropped_mask = mask[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
-        cropped_gradients = gradient[..., min_coord[-1]:max_coord[-1], min_coord[-2]:max_coord[-2]]
+        cropped_mask = mask[bbox.as_slice()]
+        # plot(cropped_mask)
+        current_hand_markers = markers_named_ema[hand_name]
 
-        # relative_coords = coords - min_coord
-        # relative_segments = einops.rearrange(relative_coords, "(e n) c -> e n c", e=2)
+        cut_points = torch.stack([
+            current_hand_markers[L.thumb_vantage_wrist],
+            current_hand_markers[L.index_vantage_wrist],
+            current_hand_markers[L.middle_vantage_wrist],
+            current_hand_markers[L.ring_vantage_wrist],
+            current_hand_markers[L.pinky_vantage_wrist],
+        ], dim=0) - min_coord.cpu().unsqueeze(0)
+        
+        wrist_dir = normalize(current_hand_markers[L.arm_spacer_middle_proximal] - current_hand_markers[L.arm_spacer_middle_distal])# * 100 # px
+        wrist_cut_offset = project_point_onto_line(
+            origin=current_hand_markers[L.middle_vantage_wrist], 
+            vec=(current_hand_markers[L.wrist] - current_hand_markers[L.middle_vantage_wrist]), 
+            dir=wrist_dir
+        ) - current_hand_markers[L.middle_vantage_wrist]
+        cut_points += wrist_cut_offset.unsqueeze(0)
+        cropped_mask = hand_segmentation.crop_wrist_along_points(
+            cropped_mask,
+            wrist_cut_points=cut_points,
+            index_metacarp_point=current_hand_markers[L.index_mcp]
+        )
+        # plot(cropped_mask)
+
+        cropped_gradients = gradient[bbox.as_slice()]
+
         relative_segments = chosen_segments.relative_to(origin=min_coord)
-        # _debug_dict["mask"] = cropped_mask[:, :450, :]
-        anatomy = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, hand_segments=relative_segments, use_surface_optimization=use_surface_optimization)
-        # print(anatomy.shape)
-        out_seg_mask[:, min_h:max_h, min_w:max_w] = anatomy
-        anatomy_maps[hand_name] = anatomy
-        # break # TODO: For debugging purposes. Remove.
+        seg_map = _closest_segment_mask(mask=cropped_mask, gradient=cropped_gradients, hand_segments=relative_segments, use_surface_optimization=use_surface_optimization)
 
-    return SegmentationResult(
-        segmentation_mask=out_seg_mask,
-        bboxes=bboxes,
-        segmentation_masks_by_hand=anatomy_maps,
-        hand_segments=hands_segments_px,
+        out_seg_map[bbox.as_slice()] = seg_map * cropped_mask
+
+    if len(bboxes) == 2 and "right" in bboxes:
+        both_hands = out_seg_map.clone().to(torch.int16)
+        right_hand = both_hands[bboxes["right"].as_slice()]
+        right_hand[right_hand > 0] = right_hand[right_hand > 0] + (out_seg_map.max() + 1)
+        out_seg_map = both_hands
+
+    return segmentation_map.SegmentationMap(
+        segmentation_map=out_seg_map,
+        _bboxes=bboxes,
     )
-
 
 def segmentation_mask_op(frames_per_mask: int=256) -> Callable[[torch.Tensor], torch.Tensor]:
     detector = hand_landmarks.Detector()
@@ -519,7 +696,7 @@ def segmentation_mask_op(frames_per_mask: int=256) -> Callable[[torch.Tensor], t
         input_frames = einops.rearrange(frames, "(b t) 1 h w -> b t 1 h w", t=frames_per_mask)
         out_list = []
         for batch in input_frames:
-            out_list.append(compute_anatomical_mask(batch, detector=detector).segmentation_mask)
+            out_list.append(compute_anatomical_mask(batch, detector=detector).segmentation_map)
         
         return torch.stack(out_list, dim=0)
     return with_manual_op(_segmentation_mask_op, equivalent_slicing_op=(slice(None, None, frames_per_mask), slice(None), slice(None), slice(None)))
@@ -553,7 +730,7 @@ def distinct_segmentation_mask_op(frames_per_mask: int=256, stride: Optional[int
         out_list = []
         for batch in input_frames:
             # print(f"{batch.shape = }")
-            mask = compute_anatomical_mask(batch, use_surface_optimization=use_surface_optimization, detector=detector).segmentation_mask
+            mask = compute_anatomical_mask(batch, use_surface_optimization=use_surface_optimization, detector=detector).segmentation_map
             # print(mask)
             out_list.append(mask_to_distinct_colors(mask=mask))
             # out_list.append(mask_to_distinct_colors(mask, overlay_background=batch.mean(0)))
