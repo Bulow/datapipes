@@ -74,6 +74,9 @@ SPECIAL_REGION_MATCHES: dict[Region, set[Region]] = {
     "palm": {"carpal", "metacarpal", "first_webspace", "interdigital_web"},
 }
 
+def _expected_actual_suffix(expected, actual) -> str:
+    return f"; expected {expected}, actual {actual!r}"
+
 def _is_iterable_query_value(value) -> bool:
     return isinstance(value, Iterable) and not isinstance(value, (str, bytes))
 
@@ -83,27 +86,33 @@ def _normalize_multi_value(value, *, key=None):
         return value
     normalized = tuple(value)
     if len(normalized) == 0:
-        raise ValueError("iterable query inputs must not be empty")
+        raise ValueError(f"iterable query inputs must not be empty{_expected_actual_suffix('a non-empty iterable', normalized)}")
     return tuple(sorted(normalized, key=key)) if key is not None else normalized
+
+
+def _normalize_single_webspace(webspace):
+    if not _is_iterable_query_value(webspace):
+        return None
+    rays = tuple(webspace)
+    if len(rays) != 2 or not all(ray in RAY_ORDER for ray in rays):
+        return None
+    ordered = tuple(sorted(rays, key=lambda ray: RAY_ORDER[ray]))
+    if ordered[0] == ordered[1]:
+        raise ValueError(f"webspace rays must be distinct{_expected_actual_suffix('two distinct rays', webspace)}")
+    return ordered
 
 
 def _normalize_webspace(webspace):
     if webspace is None:
         return None
-    if (
-        isinstance(webspace, tuple)
-        and len(webspace) == 2
-        and all(ray in RAY_ORDER for ray in webspace)
-    ):
-        ordered = tuple(sorted(webspace, key=lambda ray: RAY_ORDER[ray]))
-        if ordered[0] == ordered[1]:
-            raise ValueError("webspace rays must be distinct")
-        return ordered
+    normalized_single = _normalize_single_webspace(webspace)
+    if normalized_single is not None:
+        return normalized_single
     if not _is_iterable_query_value(webspace):
-        raise ValueError("webspace must contain exactly two rays")
+        raise ValueError(f"webspace must contain exactly two rays{_expected_actual_suffix('exactly two rays', webspace)}")
     normalized = tuple(_normalize_webspace(candidate) for candidate in webspace)
     if len(normalized) == 0:
-        raise ValueError("iterable query inputs must not be empty")
+        raise ValueError(f"iterable query inputs must not be empty{_expected_actual_suffix('a non-empty iterable', normalized)}")
     return tuple(sorted(normalized, key=lambda pair: tuple(RAY_ORDER[ray] for ray in pair)))
 
 
@@ -147,11 +156,11 @@ class SegmentQuery:
         if self.longitudinal_index is not None:
             values = self.longitudinal_index if _is_multi_selector(self.longitudinal_index) else (self.longitudinal_index,)
             if any(index < 0 for index in values):
-                raise ValueError("longitudinal_index must be >= 0")
+                raise ValueError(f"longitudinal_index must be >= 0{_expected_actual_suffix('>= 0', self.longitudinal_index)}")
         if self.transverse_index is not None:
             values = self.transverse_index if _is_multi_selector(self.transverse_index) else (self.transverse_index,)
             if any(index < 0 for index in values):
-                raise ValueError("transverse_index must be >= 0")
+                raise ValueError(f"transverse_index must be >= 0{_expected_actual_suffix('>= 0', self.transverse_index)}")
 
     def is_fully_specified(self) -> bool:
         if (
@@ -361,3 +370,5 @@ def get_region_map() -> RegionMap:
 
 #     ids = torch.tensor(matching_ids, device=maps.device, dtype=maps.dtype)
 #     return torch.isin(maps, ids)
+
+

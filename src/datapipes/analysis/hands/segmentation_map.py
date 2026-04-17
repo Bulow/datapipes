@@ -12,8 +12,10 @@ import datapipes
 import zlib
 import skimage
 import kornia
+import functools
+from datapipes.utils import import_resource
 
-_debug_frame_idx = 6
+
 
 @dataclass(frozen=True, kw_only=True)
 class BBox:
@@ -107,6 +109,29 @@ class SegmentationMap:
         """
         return region_wise.reconstruct_hands_from_region_values(region_wise_means=region_wise_values, segmentation_map=self.segmentation_map)
     
+    def anonymously_reconstruct_hands_from_region_values(self, region_wise_values: torch.Tensor) -> torch.Tensor:
+        """Renders the values from `region_wise_means` to the corresponding regions of `self`
+
+        Args:
+            region_wise_means (torch.Tensor): Values of each region. Shape: (b c m) or (c m)
+
+        Returns:
+            torch.Tensor: Reconstructed frames of shape (b c h w) where h, w are the height and with of `self.segmentation_map`
+        """
+        return region_wise.reconstruct_hands_from_region_values(region_wise_means=region_wise_values, segmentation_map=_get_default_anonymous_segmentation_map().segmentation_map)
+    
+    def get_region_sizes(self, output_type: Literal["values", "reconstructed"]="values"):
+        region_sizes = self.get_region_wise_reduction(torch.ones_like(self.segmentation_map), reduction="sum")
+
+        match output_type:
+            case "values":
+                return region_sizes
+            case "reconstructed":
+                return self.reconstruct_hands_from_region_values(region_sizes)
+            case _:
+                raise ValueError(f"Unsupported {output_type = }")
+    
+
     @classmethod
     def compute_from_raw_frames(cls, frames: torch.Tensor) -> SegmentationMap:
         if frames.device == "cpu" and torch.cuda.is_available():
@@ -204,3 +229,8 @@ def _load_segmentation_map_from_json_str(json_str: str) -> SegmentationMap:
     payload = json.loads(json_str)
     return _segmentation_map_from_json_dict(json_dict=payload)
 
+
+@functools.cache
+def _get_default_anonymous_segmentation_map() -> SegmentationMap:
+    with import_resource.as_path(resource_relative_path="default_hands_anonymous.json") as anonymous_path:
+        return SegmentationMap.load_from_json(anonymous_path)

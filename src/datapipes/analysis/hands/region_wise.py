@@ -264,7 +264,7 @@ def reconstruct_hands_from_region_values(region_wise_means: torch.Tensor, segmen
     assert segmentation_map.ndim == 3
     assert region_wise_means.ndim == 2
     
-
+    segmentation_map = segmentation_map.to(region_wise_means.device)
     _, H, W = segmentation_map.shape
     N = region_wise_means.shape[0]
 
